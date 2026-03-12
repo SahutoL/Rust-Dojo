@@ -14,6 +14,10 @@
 - [x] README の運用更新 — `npm run content:bootstrap` をセットアップと開発コマンドに追記し、fixture の役割を明記
 - [x] migration / bootstrap / lint / build 検証パス (`20260312132256_major_findings_batch`, `npm run content:bootstrap`, app routes 61 件)
 
+### 追補修正: lesson API の dynamic route 競合解消
+- [x] Next.js dev 起動時の `lessonId !== trackSlug` 競合を解消 — 実利用中の `/api/lessons/[trackSlug]/[lessonSlug]` 系は維持し、id ベース API は `/api/lesson-items/[lessonId]` 系へ退避
+- [x] lint / build 再検証パス (app routes 61 件)
+
 ### 仕様レビュー追補: レッスン表示と API 準拠
 - [x] レッスン画面の表示要件を補強 — 見出しベースの目次 / 進捗表示、スクロール位置保存、モバイル縦積みレイアウト、実行エリアを追加
 - [x] レッスン完了導線の補強 — 完了記録を `POST /api/lessons/[trackSlug]/[lessonSlug]/complete` に分離し、見出し閲覧率と実行済み状態を満たした時だけ完了を記録するように変更
