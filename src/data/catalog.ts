@@ -1,4 +1,18 @@
+import { cache } from "react";
 import { unstable_cache } from "next/cache";
+import {
+  tracks as fixtureTracks,
+  type LessonData as FixtureLessonData,
+  type TrackData as FixtureTrackData,
+} from "@/data/lessons";
+import {
+  problems as fixtureProblems,
+  type ProblemData as FixtureProblemData,
+} from "@/data/problems";
+import {
+  extractLessonMarkdownSections,
+  extractLessonSandboxCode,
+} from "@/lib/lesson-markdown";
 import {
   prisma,
   type Difficulty,
@@ -148,6 +162,487 @@ interface PublishedCatalogBaseData {
     trackCode: string;
   }>;
   contextTracks: PublishedCatalogContextTrack[];
+}
+
+const CATALOG_RECOVERY_RETRY_DELAY_MS = 200;
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRecoverableCatalogError(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code ?? "")
+      : "";
+  const message = error instanceof Error ? error.message : String(error ?? "");
+
+  return (
+    code === "P1001" ||
+    code === "P2024" ||
+    code === "P2028" ||
+    /Connection terminated|connection timeout|timeout exceeded when trying to connect|Unable to start a transaction|Can't reach database server/i.test(
+      message
+    )
+  );
+}
+
+function buildFixtureLessonId(trackCode: string, lessonSlug: string) {
+  return `fixture:${trackCode}:${lessonSlug}`;
+}
+
+function buildFixtureLessonSectionId(
+  trackCode: string,
+  lessonSlug: string,
+  suffix: string,
+  index?: number
+) {
+  return `fixture:${trackCode}:${lessonSlug}:${suffix}${typeof index === "number" ? `:${index + 1}` : ""}`;
+}
+
+function mapFixtureTrackAvailability(
+  value: FixtureTrackData["availability"]
+): TrackAvailability {
+  return (value === "coming_soon" ? "COMING_SOON" : "AVAILABLE") as TrackAvailability;
+}
+
+function findFixtureTrack(trackCode: string) {
+  return fixtureTracks.find((track) => track.code === trackCode) ?? null;
+}
+
+function findFixtureLesson(trackCode: string, lessonSlug: string) {
+  const track = findFixtureTrack(trackCode);
+  if (!track) {
+    return null;
+  }
+
+  const lesson = track.lessons.find((candidate) => candidate.slug === lessonSlug) ?? null;
+  if (!lesson) {
+    return null;
+  }
+
+  return { track, lesson };
+}
+
+function findFixtureLessonById(lessonId: string) {
+  for (const track of fixtureTracks) {
+    for (const lesson of track.lessons) {
+      if (buildFixtureLessonId(track.code, lesson.slug) === lessonId) {
+        return { track, lesson };
+      }
+    }
+  }
+
+  return null;
+}
+
+function pickFixtureQuizDistractors(
+  track: FixtureTrackData,
+  lesson: FixtureLessonData
+) {
+  const sameTrack = track.lessons
+    .filter((candidate) => candidate.slug !== lesson.slug)
+    .slice(0, 3)
+    .map((candidate) => candidate.title);
+
+  if (sameTrack.length === 3) {
+    return sameTrack;
+  }
+
+  const crossTrack = fixtureTracks
+    .flatMap((candidateTrack) => candidateTrack.lessons)
+    .filter((candidate) => candidate.slug !== lesson.slug)
+    .map((candidate) => candidate.title)
+    .filter((title) => !sameTrack.includes(title));
+
+  return [...sameTrack, ...crossTrack].slice(0, 3);
+}
+
+function buildFixtureLessonSections(
+  track: FixtureTrackData,
+  lesson: FixtureLessonData
+): CatalogLessonSection[] {
+  const explanationSections = extractLessonMarkdownSections(lesson.content).map(
+    (section, index) => ({
+      id: buildFixtureLessonSectionId(track.code, lesson.slug, "explanation", index),
+      sectionType: "EXPLANATION" as SectionType,
+      isRequired: true,
+      title: section.title,
+      content: section.markdown,
+      payloadJson: null,
+      sortOrder: index,
+    })
+  );
+
+  const quizSection = {
+    id: buildFixtureLessonSectionId(track.code, lesson.slug, "quiz"),
+    sectionType: "QUIZ" as SectionType,
+    isRequired: true,
+    title: "理解チェック",
+    content: "このレッスンの主題を確認します。",
+    payloadJson: {
+      question: "このレッスンで中心になるテーマはどれですか。",
+      options: [lesson.title, ...pickFixtureQuizDistractors(track, lesson)],
+      correctIndex: 0,
+      explanation: lesson.summary,
+    },
+    sortOrder: explanationSections.length,
+  } satisfies CatalogLessonSection;
+
+  const codeSection = {
+    id: buildFixtureLessonSectionId(track.code, lesson.slug, "code"),
+    sectionType: "CODE_EXECUTION" as SectionType,
+    isRequired: true,
+    title: "手を動かす",
+    content: "コードを実行して内容を確かめます。",
+    payloadJson: {
+      prompt: `${lesson.title} に出てきたコードを実行し、コンパイルを通します。`,
+      starterCode: extractLessonSandboxCode(lesson.content),
+      stdin: "",
+      successMode: "compile" as const,
+    },
+    sortOrder: explanationSections.length + 1,
+  } satisfies CatalogLessonSection;
+
+  const summarySection = {
+    id: buildFixtureLessonSectionId(track.code, lesson.slug, "summary"),
+    sectionType: "SUMMARY" as SectionType,
+    isRequired: false,
+    title: "まとめ",
+    content: lesson.summary,
+    payloadJson: null,
+    sortOrder: explanationSections.length + 2,
+  } satisfies CatalogLessonSection;
+
+  return [...explanationSections, quizSection, codeSection, summarySection];
+}
+
+function buildFixtureProblemSummary(problem: FixtureProblemData): CatalogProblemSummary {
+  const track = findFixtureTrack(problem.trackCode);
+
+  return {
+    id: problem.id,
+    title: problem.title,
+    difficulty: problem.difficulty,
+    tags: problem.tags,
+    trackCode: problem.trackCode,
+    trackName: track?.name ?? "学習トラック",
+    relatedLessonSlugs: problem.relatedLessonSlugs,
+    kind: problem.kind,
+    estimatedMinutes: problem.estimatedMinutes,
+  };
+}
+
+function buildFallbackPublishedCatalogBaseData(): PublishedCatalogBaseData {
+  const tracks: CatalogTrack[] = [];
+  const lessons: CatalogLessonSummary[] = [];
+  const problems: CatalogProblemSummary[] = [];
+  const lessonLookup: PublishedCatalogBaseData["lessonLookup"] = [];
+  const lessonEntryBySlug = new Map<
+    string,
+    { track: FixtureTrackData; lesson: FixtureLessonData; sortOrder: number }
+  >();
+  const contextTracks: PublishedCatalogContextTrack[] = [];
+
+  for (const track of fixtureTracks) {
+    for (const [lessonIndex, lesson] of track.lessons.entries()) {
+      lessonEntryBySlug.set(lesson.slug, {
+        track,
+        lesson,
+        sortOrder: lessonIndex,
+      });
+    }
+  }
+
+  for (const [trackIndex, track] of fixtureTracks.entries()) {
+    const lessonSummaries = track.lessons.map((lesson) => {
+      const summary: CatalogLessonSummary = {
+        id: buildFixtureLessonId(track.code, lesson.slug),
+        trackCode: track.code,
+        trackName: track.name,
+        slug: lesson.slug,
+        title: lesson.title,
+        summary: lesson.summary,
+        estimatedMinutes: lesson.estimatedMinutes,
+      };
+
+      lessons.push(summary);
+      lessonLookup.push({
+        id: summary.id,
+        slug: lesson.slug,
+        trackCode: track.code,
+      });
+
+      return summary;
+    });
+
+    const trackProblems = fixtureProblems
+      .filter((problem) => problem.trackCode === track.code)
+      .sort((left, right) => left.title.localeCompare(right.title, "ja"));
+
+    const contextLessons = track.lessons.map((lesson, lessonIndex) => ({
+      id: buildFixtureLessonId(track.code, lesson.slug),
+      slug: lesson.slug,
+      title: lesson.title,
+      estimatedMinutes: lesson.estimatedMinutes,
+      trackCode: track.code,
+      trackName: track.name,
+      href: `/learn/${track.code}/${lesson.slug}`,
+      conceptLabels: [lesson.title],
+      sortOrder: lessonIndex,
+    }));
+
+    const contextProblems = trackProblems.map((problem, problemIndex) => {
+      const relatedLessons = problem.relatedLessonSlugs
+        .map((lessonSlug) => {
+          const match = lessonEntryBySlug.get(lessonSlug);
+          if (!match) {
+            return null;
+          }
+
+          return {
+            id: buildFixtureLessonId(match.track.code, match.lesson.slug),
+            slug: match.lesson.slug,
+            title: match.lesson.title,
+            estimatedMinutes: match.lesson.estimatedMinutes,
+            trackCode: match.track.code,
+            trackName: match.track.name,
+            href: `/learn/${match.track.code}/${match.lesson.slug}`,
+            conceptLabels: [match.lesson.title],
+            sortOrder: match.sortOrder,
+          } satisfies PublishedCatalogContextLesson;
+        })
+        .filter((lesson): lesson is PublishedCatalogContextLesson => lesson !== null);
+
+      const summary = buildFixtureProblemSummary(problem);
+      problems.push(summary);
+
+      return {
+        id: problem.id,
+        title: problem.title,
+        estimatedMinutes: problem.estimatedMinutes,
+        trackCode: track.code,
+        trackName: track.name,
+        href: `/exercises/${problem.id}`,
+        conceptLabels: problem.tags,
+        tags: problem.tags,
+        relatedLessons,
+        sortOrder: problemIndex,
+      } satisfies PublishedCatalogContextProblem;
+    });
+
+    tracks.push({
+      id: `fixture:${track.code}`,
+      code: track.code,
+      label: track.label,
+      name: track.name,
+      description: track.description,
+      gradient: track.gradient,
+      availability: track.availability,
+      roadmapTopics: track.roadmapTopics,
+      launchNote: track.launchNote,
+      lessons: lessonSummaries,
+    });
+
+    contextTracks.push({
+      id: `fixture:${track.code}`,
+      code: track.code,
+      name: track.name,
+      availability: mapFixtureTrackAvailability(track.availability),
+      sortOrder: trackIndex,
+      lessons: contextLessons,
+      problems: contextProblems,
+    });
+  }
+
+  return {
+    tracks,
+    lessons,
+    problems,
+    lessonLookup,
+    contextTracks,
+  };
+}
+
+function buildFallbackLessonDetail(
+  trackCode: string,
+  lessonSlug: string
+): CatalogLessonDetail | null {
+  const match = findFixtureLesson(trackCode, lessonSlug);
+  if (!match) {
+    return null;
+  }
+
+  const { track, lesson } = match;
+
+  return {
+    id: buildFixtureLessonId(track.code, lesson.slug),
+    trackCode: track.code,
+    trackName: track.name,
+    slug: lesson.slug,
+    title: lesson.title,
+    summary: lesson.summary,
+    estimatedMinutes: lesson.estimatedMinutes,
+    content: lesson.content,
+    track: {
+      id: `fixture:${track.code}`,
+      code: track.code,
+      label: track.label,
+      name: track.name,
+      description: track.description,
+      gradient: track.gradient,
+      availability: track.availability,
+      roadmapTopics: track.roadmapTopics,
+      launchNote: track.launchNote,
+    },
+    sections: buildFixtureLessonSections(track, lesson),
+  };
+}
+
+function buildFallbackProblemDetail(problemId: string): CatalogProblemDetail | null {
+  const problem = fixtureProblems.find((candidate) => candidate.id === problemId) ?? null;
+  if (!problem) {
+    return null;
+  }
+
+  const track = findFixtureTrack(problem.trackCode);
+  const relatedLessons = problem.relatedLessonSlugs
+    .map((lessonSlug) => {
+      const directMatch = findFixtureLesson(problem.trackCode, lessonSlug);
+      if (directMatch) {
+        return directMatch;
+      }
+
+      for (const candidateTrack of fixtureTracks) {
+        const lesson = candidateTrack.lessons.find(
+          (candidateLesson) => candidateLesson.slug === lessonSlug
+        );
+        if (lesson) {
+          return { track: candidateTrack, lesson };
+        }
+      }
+
+      return null;
+    })
+    .filter(
+      (
+        value
+      ): value is { track: FixtureTrackData; lesson: FixtureLessonData } => value !== null
+    )
+    .map(({ track: relatedTrack, lesson }) => ({
+      id: buildFixtureLessonId(relatedTrack.code, lesson.slug),
+      slug: lesson.slug,
+      title: lesson.title,
+      estimatedMinutes: lesson.estimatedMinutes,
+      trackCode: relatedTrack.code,
+      trackName: relatedTrack.name,
+    }));
+
+  return {
+    ...buildFixtureProblemSummary(problem),
+    statement: problem.statement,
+    constraintsText: problem.constraintsText,
+    inputFormat: problem.inputFormat,
+    outputFormat: problem.outputFormat,
+    hintText: problem.hintText,
+    explanationText: problem.explanationText,
+    initialCode: problem.initialCode,
+    solutionOutline: undefined,
+    trackLabel: track?.label,
+    relatedLessons,
+    testCases: problem.testCases.map((testCase, index) => ({
+      id: `fixture:${problem.id}:case:${index + 1}`,
+      input: testCase.input,
+      expectedOutput: testCase.expectedOutput,
+      isHidden: testCase.isHidden,
+      timeLimitMs: 2000,
+      memoryLimitKb: 262144,
+      score: testCase.isHidden ? 0 : 1,
+    })),
+  };
+}
+
+function filterFallbackLessons(filters?: {
+  trackCode?: string;
+  q?: string;
+}) {
+  const query = filters?.q?.trim().toLocaleLowerCase("ja-JP") ?? "";
+
+  return fixtureTracks
+    .filter((track) => !filters?.trackCode || track.code === filters.trackCode)
+    .flatMap((track) =>
+      track.lessons
+        .filter((lesson) => {
+          if (!query) {
+            return true;
+          }
+
+          return [lesson.title, lesson.summary, lesson.content].some((value) =>
+            value.toLocaleLowerCase("ja-JP").includes(query)
+          );
+        })
+        .map((lesson) => ({
+          id: buildFixtureLessonId(track.code, lesson.slug),
+          trackCode: track.code,
+          trackName: track.name,
+          slug: lesson.slug,
+          title: lesson.title,
+          summary: lesson.summary,
+          estimatedMinutes: lesson.estimatedMinutes,
+        }))
+    );
+}
+
+function filterFallbackProblems(filters?: {
+  trackCode?: string;
+  difficulty?: string;
+  tag?: string;
+  q?: string;
+}) {
+  const query = filters?.q?.trim().toLocaleLowerCase("ja-JP") ?? "";
+  const normalizedTag = filters?.tag?.trim();
+  const normalizedDifficulty = filters?.difficulty?.trim().toLocaleLowerCase("ja-JP");
+
+  return fixtureProblems
+    .filter((problem) => !filters?.trackCode || problem.trackCode === filters.trackCode)
+    .filter((problem) => !normalizedDifficulty || problem.difficulty === normalizedDifficulty)
+    .filter((problem) => !normalizedTag || problem.tags.includes(normalizedTag))
+    .filter((problem) => {
+      if (!query) {
+        return true;
+      }
+
+      return [problem.title, problem.statement, ...problem.tags].some((value) =>
+        value.toLocaleLowerCase("ja-JP").includes(query)
+      );
+    })
+    .map((problem) => buildFixtureProblemSummary(problem));
+}
+
+async function recoverCatalogRead<T>(
+  label: string,
+  initialError: unknown,
+  execute: () => Promise<T>,
+  fallback: () => T | Promise<T>
+) {
+  if (!isRecoverableCatalogError(initialError)) {
+    throw initialError;
+  }
+
+  console.error(`[catalog] ${label} failed. Retrying once.`, initialError);
+  await prisma.$disconnect().catch(() => undefined);
+  await wait(CATALOG_RECOVERY_RETRY_DELAY_MS);
+
+  try {
+    return await execute();
+  } catch (retryError) {
+    if (!isRecoverableCatalogError(retryError)) {
+      throw retryError;
+    }
+
+    console.error(`[catalog] ${label} fell back to fixture content.`, retryError);
+    return fallback();
+  }
 }
 
 function mapTrackAvailability(value: TrackAvailability) {
@@ -597,6 +1092,47 @@ function getCachedPublishedProblemDetail(problemId: string) {
   )();
 }
 
+const getPublishedCatalogBaseDataWithRecovery = cache(async () => {
+  try {
+    return await getCachedPublishedCatalogBaseData();
+  } catch (error) {
+    return recoverCatalogRead(
+      "published catalog base",
+      error,
+      fetchPublishedCatalogBaseData,
+      buildFallbackPublishedCatalogBaseData
+    );
+  }
+});
+
+const getPublishedLessonDetailWithRecovery = cache(
+  async (trackCode: string, lessonSlug: string) => {
+    try {
+      return await getCachedPublishedLessonDetail(trackCode, lessonSlug);
+    } catch (error) {
+      return recoverCatalogRead(
+        `published lesson detail (${trackCode}/${lessonSlug})`,
+        error,
+        () => fetchPublishedLessonDetail(trackCode, lessonSlug),
+        () => buildFallbackLessonDetail(trackCode, lessonSlug)
+      );
+    }
+  }
+);
+
+const getPublishedProblemDetailWithRecovery = cache(async (problemId: string) => {
+  try {
+    return await getCachedPublishedProblemDetail(problemId);
+  } catch (error) {
+    return recoverCatalogRead(
+      `published problem detail (${problemId})`,
+      error,
+      () => fetchPublishedProblemDetail(problemId),
+      () => buildFallbackProblemDetail(problemId)
+    );
+  }
+});
+
 export function getTrackDisplayName(track: Pick<CatalogTrack, "label" | "name">) {
   return `${track.label} — ${track.name}`;
 }
@@ -616,12 +1152,12 @@ export function getTrackVolumeLabel(
 }
 
 export async function getPublishedCatalogContextTracks() {
-  const baseData = await getCachedPublishedCatalogBaseData();
+  const baseData = await getPublishedCatalogBaseDataWithRecovery();
   return baseData.contextTracks;
 }
 
 export async function getCatalogTracks() {
-  const baseData = await getCachedPublishedCatalogBaseData();
+  const baseData = await getPublishedCatalogBaseDataWithRecovery();
   return baseData.tracks;
 }
 
@@ -631,36 +1167,46 @@ export async function getCatalogLessons(filters?: {
   includeUnpublished?: boolean;
 }) {
   if (!filters?.q && !filters?.includeUnpublished) {
-    const baseData = await getCachedPublishedCatalogBaseData();
+    const baseData = await getPublishedCatalogBaseDataWithRecovery();
     return filters?.trackCode
       ? baseData.lessons.filter((lesson) => lesson.trackCode === filters.trackCode)
       : baseData.lessons;
   }
 
-  const rows = await prisma.lesson.findMany({
-    where: {
-      ...(filters?.includeUnpublished ? {} : { isPublished: true }),
-      ...(filters?.trackCode ? { track: { code: filters.trackCode } } : {}),
-      ...(filters?.q
-        ? {
-            OR: [
-              { title: { contains: filters.q, mode: "insensitive" } },
-              { summary: { contains: filters.q, mode: "insensitive" } },
-              { content: { contains: filters.q, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: [{ track: { sortOrder: "asc" } }, { sortOrder: "asc" }],
-    include: {
-      track: {
-        select: {
-          code: true,
-          name: true,
+  let rows;
+  try {
+    rows = await prisma.lesson.findMany({
+      where: {
+        ...(filters?.includeUnpublished ? {} : { isPublished: true }),
+        ...(filters?.trackCode ? { track: { code: filters.trackCode } } : {}),
+        ...(filters?.q
+          ? {
+              OR: [
+                { title: { contains: filters.q, mode: "insensitive" } },
+                { summary: { contains: filters.q, mode: "insensitive" } },
+                { content: { contains: filters.q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ track: { sortOrder: "asc" } }, { sortOrder: "asc" }],
+      include: {
+        track: {
+          select: {
+            code: true,
+            name: true,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (filters?.includeUnpublished || !isRecoverableCatalogError(error)) {
+      throw error;
+    }
+
+    console.error("[catalog] lesson query fell back to fixture content.", error);
+    return filterFallbackLessons(filters);
+  }
 
   return rows.map((row) =>
     toLessonSummary({
@@ -675,7 +1221,7 @@ export async function getCatalogLessons(filters?: {
 }
 
 export async function getCatalogTrackByCode(trackCode: string) {
-  const baseData = await getCachedPublishedCatalogBaseData();
+  const baseData = await getPublishedCatalogBaseDataWithRecovery();
   return baseData.tracks.find((track) => track.code === trackCode) ?? null;
 }
 
@@ -687,29 +1233,32 @@ export async function getCatalogLessonByTrackAndSlug(
   trackCode: string,
   lessonSlug: string
 ) {
-  return getCachedPublishedLessonDetail(trackCode, lessonSlug);
+  return getPublishedLessonDetailWithRecovery(trackCode, lessonSlug);
 }
 
 export async function getCatalogLessonBySlug(lessonSlug: string) {
-  const baseData = await getCachedPublishedCatalogBaseData();
+  const baseData = await getPublishedCatalogBaseDataWithRecovery();
   const match = baseData.lessonLookup.find((lesson) => lesson.slug === lessonSlug);
 
   if (!match) {
     return null;
   }
 
-  return getCachedPublishedLessonDetail(match.trackCode, lessonSlug);
+  return getPublishedLessonDetailWithRecovery(match.trackCode, lessonSlug);
 }
 
 export async function getCatalogLessonById(lessonId: string) {
-  const baseData = await getCachedPublishedCatalogBaseData();
+  const baseData = await getPublishedCatalogBaseDataWithRecovery();
   const match = baseData.lessonLookup.find((lesson) => lesson.id === lessonId);
 
   if (!match) {
-    return null;
+    const fixtureMatch = findFixtureLessonById(lessonId);
+    return fixtureMatch
+      ? buildFallbackLessonDetail(fixtureMatch.track.code, fixtureMatch.lesson.slug)
+      : null;
   }
 
-  return getCachedPublishedLessonDetail(match.trackCode, match.slug);
+  return getPublishedLessonDetailWithRecovery(match.trackCode, match.slug);
 }
 
 export async function getCatalogProblems(filters?: {
@@ -725,57 +1274,67 @@ export async function getCatalogProblems(filters?: {
     !filters?.tag &&
     !filters?.q
   ) {
-    const baseData = await getCachedPublishedCatalogBaseData();
+    const baseData = await getPublishedCatalogBaseDataWithRecovery();
     return filters?.trackCode
       ? baseData.problems.filter((problem) => problem.trackCode === filters.trackCode)
       : baseData.problems;
   }
 
-  const rows = await prisma.problem.findMany({
-    where: {
-      ...(filters?.includeUnpublished ? {} : { isPublished: true }),
-      ...(filters?.trackCode ? { track: { code: filters.trackCode } } : {}),
-      ...(filters?.difficulty
-        ? { difficulty: filters.difficulty.toUpperCase() as Difficulty }
-        : {}),
-      ...(filters?.tag ? { tags: { some: { tag: { name: filters.tag } } } } : {}),
-      ...(filters?.q
-        ? {
-            OR: [
-              { title: { contains: filters.q, mode: "insensitive" } },
-              { statement: { contains: filters.q, mode: "insensitive" } },
-              {
-                tags: {
-                  some: {
-                    tag: {
-                      name: { contains: filters.q, mode: "insensitive" },
+  let rows;
+  try {
+    rows = await prisma.problem.findMany({
+      where: {
+        ...(filters?.includeUnpublished ? {} : { isPublished: true }),
+        ...(filters?.trackCode ? { track: { code: filters.trackCode } } : {}),
+        ...(filters?.difficulty
+          ? { difficulty: filters.difficulty.toUpperCase() as Difficulty }
+          : {}),
+        ...(filters?.tag ? { tags: { some: { tag: { name: filters.tag } } } } : {}),
+        ...(filters?.q
+          ? {
+              OR: [
+                { title: { contains: filters.q, mode: "insensitive" } },
+                { statement: { contains: filters.q, mode: "insensitive" } },
+                {
+                  tags: {
+                    some: {
+                      tag: {
+                        name: { contains: filters.q, mode: "insensitive" },
+                      },
                     },
                   },
                 },
-              },
-            ],
-          }
-        : {}),
-    },
-    orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
-    include: {
-      track: true,
-      tags: {
-        include: {
-          tag: true,
-        },
+              ],
+            }
+          : {}),
       },
-      relatedLessons: {
-        include: {
-          lesson: {
-            include: {
-              track: true,
+      orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+      include: {
+        track: true,
+        tags: {
+          include: {
+            tag: true,
+          },
+        },
+        relatedLessons: {
+          include: {
+            lesson: {
+              include: {
+                track: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (filters?.includeUnpublished || !isRecoverableCatalogError(error)) {
+      throw error;
+    }
+
+    console.error("[catalog] problem query fell back to fixture content.", error);
+    return filterFallbackProblems(filters);
+  }
 
   return rows.map((row) => ({
     id: row.id,
@@ -791,5 +1350,5 @@ export async function getCatalogProblems(filters?: {
 }
 
 export async function getCatalogProblemById(problemId: string) {
-  return getCachedPublishedProblemDetail(problemId);
+  return getPublishedProblemDetailWithRecovery(problemId);
 }

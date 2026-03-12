@@ -20,6 +20,11 @@
 - [x] `npm run dev` と `npm run build` を `--webpack` 既定へ変更し、Next.js 16 の Turbopack で再発していた Tailwind CSS 解決不具合を回避
 - [x] `npm run dev:turbo` と `npm run build:turbo` を追加し、Turbopack 比較検証の導線は残した
 
+### 追補修正: 公開 catalog の接続断対策
+- [x] 公開 catalog 読み出しに 1 回の再試行を追加し、接続断系エラーでは Prisma を切り直してから再実行するように変更
+- [x] 再試行後も DB が不安定な場合は fixture から公開 track / lesson / problem を返す fallback を追加し、`/` `/learn` `/exercises` が 500 で落ちないように変更
+- [x] lesson / problem detail と検索系も published 範囲では同じ fallback に寄せ、公開導線全体を劣化運転可能にした
+
 ## 2026-03-12
 
 ### 重大指摘解消バッチ
