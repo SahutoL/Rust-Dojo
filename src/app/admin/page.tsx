@@ -6,6 +6,7 @@ import { Badge, Card } from "@/components/ui";
 import { getAdminSnapshot } from "@/data/adminSnapshot";
 import { canAccessAdmin } from "@/lib/admin";
 import { auth } from "@/lib/auth";
+import { AdminMutationPanel } from "./AdminMutationPanel";
 
 export const metadata: Metadata = {
   title: "管理画面",
@@ -131,7 +132,7 @@ export default async function AdminPage() {
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-bold tracking-tight">管理画面</h1>
               <Badge variant="info" size="sm">
-                読み取り専用
+                変更反映あり
               </Badge>
               <Badge variant="brand" size="sm">
                 {session.user.adminRole}
@@ -172,6 +173,23 @@ export default async function AdminPage() {
             </p>
           </Card>
         )}
+
+        <AdminMutationPanel
+          trackOptions={snapshot.lessonRows.map((track) => ({
+            value: track.trackCode,
+            label: `${track.trackLabel} ${track.trackName}`,
+          }))}
+          lessonOptions={snapshot.lessonRows.flatMap((track) =>
+            track.lessons.map((lesson) => ({
+              value: lesson.id,
+              label: `${track.trackLabel} ${lesson.title}`,
+            }))
+          )}
+          problemOptions={snapshot.problemRows.map((problem) => ({
+            value: problem.problemId,
+            label: `${problem.trackName} / ${problem.title}`,
+          }))}
+        />
 
         <div className="grid gap-6 xl:grid-cols-2">
           <Card variant="bordered" padding="lg">

@@ -12,13 +12,17 @@ interface RunOutput {
 
 export function LessonSandbox({
   initialCode,
+  prompt,
+  initialStdin = "",
   onSuccessfulRun,
 }: {
   initialCode: string;
+  prompt?: string;
+  initialStdin?: string;
   onSuccessfulRun: () => void;
 }) {
   const [code, setCode] = useState(initialCode);
-  const [stdin, setStdin] = useState("");
+  const [stdin, setStdin] = useState(initialStdin);
   const [isRunning, setIsRunning] = useState(false);
   const [output, setOutput] = useState<RunOutput | null>(null);
   const [fontSize] = useState(() =>
@@ -66,7 +70,7 @@ export function LessonSandbox({
         <div>
           <h2 className="text-sm font-semibold mb-1">実行エリア</h2>
           <p className="text-xs text-[var(--text-tertiary)] leading-relaxed">
-            例を少し書き換えて実行し、理解を手で確かめます。
+            {prompt ?? "例を少し書き換えて実行し、理解を手で確かめます。"}
           </p>
         </div>
         <Button
@@ -75,6 +79,7 @@ export function LessonSandbox({
           size="sm"
           onClick={() => {
             setCode(initialCode);
+            setStdin(initialStdin);
             setOutput(null);
           }}
         >

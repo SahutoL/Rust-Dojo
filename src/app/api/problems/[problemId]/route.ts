@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProblem } from "@/data/problems";
-import { getTrack } from "@/data/lessons";
+import { getCatalogProblemById } from "@/data/catalog";
 
 type Params = Promise<{ problemId: string }>;
 
@@ -9,7 +8,7 @@ export async function GET(
   { params }: { params: Params }
 ) {
   const { problemId } = await params;
-  const problem = getProblem(problemId);
+  const problem = await getCatalogProblemById(problemId);
 
   if (!problem) {
     return NextResponse.json(
@@ -18,15 +17,13 @@ export async function GET(
     );
   }
 
-  const track = getTrack(problem.trackCode);
-
   return NextResponse.json({
     id: problem.id,
     title: problem.title,
     difficulty: problem.difficulty,
     tags: problem.tags,
     trackCode: problem.trackCode,
-    trackName: track?.name ?? problem.trackCode,
+    trackName: problem.trackName,
     relatedLessonSlugs: problem.relatedLessonSlugs,
     kind: problem.kind,
     estimatedMinutes: problem.estimatedMinutes,
@@ -34,9 +31,11 @@ export async function GET(
     constraintsText: problem.constraintsText ?? null,
     inputFormat: problem.inputFormat ?? null,
     outputFormat: problem.outputFormat ?? null,
+    solutionOutline: problem.solutionOutline ?? null,
     hintText: problem.hintText ?? null,
     explanationText: problem.explanationText ?? null,
     initialCode: problem.initialCode,
+    relatedLessons: problem.relatedLessons,
     testCases: problem.testCases.map((testCase, index) => ({
       index,
       input: testCase.isHidden ? null : testCase.input,

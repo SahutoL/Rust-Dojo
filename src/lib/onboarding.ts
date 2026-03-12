@@ -1,5 +1,3 @@
-import { getTrack, getTrackDisplayName } from "@/data/lessons";
-
 export type OnboardingPrimaryGoal =
   | "PROGRAMMING_BASICS"
   | "RUST_INTRO"
@@ -54,6 +52,17 @@ export interface StoredOnboardingResult {
   recommendedTrackCode: string;
   recommendedTrackName: string;
   description: string;
+}
+
+const TRACK_DISPLAY_NAMES: Record<string, string> = {
+  track0: "Track 0: プログラミング前提",
+  track1: "Track 1: Rust 入門",
+  track2: "Track 2: Rust 実務",
+  track3: "Track 3: AtCoder Rust",
+};
+
+function getTrackDisplayName(trackCode: string) {
+  return TRACK_DISPLAY_NAMES[trackCode] ?? trackCode;
 }
 
 export const onboardingQuestions: OnboardingQuestion[] = [
@@ -194,10 +203,9 @@ export function isOnboardingAnswers(value: unknown): value is OnboardingAnswers 
 export function diagnoseAnswers(answers: OnboardingAnswers): DiagnosisResult {
   const { programming_experience, rust_experience, goal } = answers;
   const buildResult = (trackCode: string, description: string): DiagnosisResult => {
-    const track = getTrack(trackCode);
     return {
       track: trackCode,
-      trackName: track ? getTrackDisplayName(track) : trackCode,
+      trackName: getTrackDisplayName(trackCode),
       description,
       slug: trackCode,
     };

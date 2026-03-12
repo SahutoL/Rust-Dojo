@@ -1,9 +1,8 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 import { isSessionAdminRole } from "@/lib/admin";
 import { buildDisplayName, getSessionIdentityForUser } from "@/lib/account";
-import { prisma } from "@/lib/prisma";
+import { verifyCredentials } from "@/lib/auth-credentials";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -20,27 +19,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const email = credentials.email as string;
         const password = credentials.password as string;
+        const result = await verifyCredentials(email, password);
 
-        const user = await prisma.user.findUnique({
-          where: { email },
-          include: { profile: true },
-        });
-
-        if (!user) {
-          return null;
-        }
-
-        const isValid = await bcrypt.compare(password, user.passwordHash);
-        if (!isValid) {
+        if (result.error || !result.user) {
           return null;
         }
 
         // 表示名のフォールバック: displayName → email の @ 前
-        const displayName = buildDisplayName(email, user.profile?.displayName);
+        const displayName = buildDisplayName(
+          email,
+          result.user.profile?.displayName
+        );
 
         return {
-          id: user.id,
-          email: user.email,
+          id: result.user.id,
+          email: result.user.email,
           name: displayName,
         };
       },

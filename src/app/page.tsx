@@ -1,15 +1,13 @@
-"use client";
-
-import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Button, Card, Badge } from "@/components/ui";
 import { Header } from "@/components/Header";
 import {
-  tracks as lessonTracks,
+  getCatalogProblems,
+  getCatalogTracks,
   getTrackVolumeLabel,
-  type TrackData,
-} from "@/data/lessons";
-import { problems } from "@/data/problems";
+  type CatalogTrack,
+} from "@/data/catalog";
+import { auth } from "@/lib/auth";
 
 const availabilityLabel = {
   available: "公開中",
@@ -25,7 +23,7 @@ function TrackCard({
   track,
   cardVariant,
 }: {
-  track: TrackData;
+  track: CatalogTrack;
   cardVariant: "default" | "bordered";
 }) {
   return (
@@ -90,8 +88,16 @@ const faqs = [
 ];
 
 /* ===== ログイン済みユーザー向けホーム ===== */
-function AuthenticatedHome({ userName }: { userName: string }) {
-  const totalLessons = lessonTracks.reduce((s, t) => s + t.lessons.length, 0);
+function AuthenticatedHome({
+  userName,
+  tracks,
+  problemCount,
+}: {
+  userName: string;
+  tracks: CatalogTrack[];
+  problemCount: number;
+}) {
+  const totalLessons = tracks.reduce((sum, track) => sum + track.lessons.length, 0);
 
   return (
     <div className="min-h-screen">
@@ -117,7 +123,7 @@ function AuthenticatedHome({ userName }: { userName: string }) {
           <Link href="/exercises">
             <Card variant="bordered" hoverable padding="md">
               <p className="text-xs text-[var(--text-tertiary)] mb-1">演習問題</p>
-              <p className="text-lg font-bold">{problems.length} 問</p>
+              <p className="text-lg font-bold">{problemCount} 問</p>
               <p className="text-xs text-[var(--text-secondary)] mt-1">問題を解く</p>
             </Card>
           </Link>
@@ -133,7 +139,7 @@ function AuthenticatedHome({ userName }: { userName: string }) {
         {/* トラック一覧 */}
         <h2 className="text-sm font-semibold mb-3">学習トラック</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {lessonTracks.map((track) => (
+          {tracks.map((track) => (
             <Link href={`/learn/${track.code}`} key={track.code}>
               <TrackCard track={track} cardVariant="bordered" />
             </Link>
@@ -145,7 +151,11 @@ function AuthenticatedHome({ userName }: { userName: string }) {
 }
 
 /* ===== 未ログインユーザー向けランディングページ ===== */
-function LandingPage() {
+function LandingPage({
+  tracks,
+}: {
+  tracks: CatalogTrack[];
+}) {
   return (
     <div className="min-h-screen">
       <Header fixed />
@@ -223,13 +233,13 @@ function LandingPage() {
       <section className="py-16 px-4 bg-[var(--bg-secondary)]">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl sm:text-3xl font-bold text-center mb-3 tracking-tight">
-            {lessonTracks.length} つの学習トラック
+            {tracks.length} つの学習トラック
           </h2>
           <p className="text-center text-[var(--text-secondary)] mb-12 max-w-xl mx-auto text-sm">
             目的と経験に応じてトラックを選択できます。学習診断で開始地点を提案します。
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {lessonTracks.map((track) => (
+            {tracks.map((track) => (
               <Link href={`/learn/${track.code}`} key={track.code}>
                 <TrackCard track={track} cardVariant="default" />
               </Link>
@@ -332,22 +342,26 @@ function LandingPage() {
 }
 
 /* ===== メインコンポーネント: セッション状態で分岐 ===== */
-export default function HomePage() {
-  const { data: session, status } = useSession();
+export const dynamic = "force-dynamic";
 
-  if (status === "loading") {
+export default async function HomePage() {
+  const [session, tracks, problems] = await Promise.all([
+    auth(),
+    getCatalogTracks(),
+    getCatalogProblems(),
+  ]);
+
+  if (session?.user) {
+    const userName =
+      session.user.name || session.user.email?.split("@")[0] || "ユーザー";
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <span className="text-sm text-[var(--text-tertiary)]">読み込み中...</span>
-      </div>
+      <AuthenticatedHome
+        userName={userName}
+        tracks={tracks}
+        problemCount={problems.length}
+      />
     );
   }
 
-  if (status === "authenticated" && session?.user) {
-    const userName =
-      session.user.name || session.user.email?.split("@")[0] || "ユーザー";
-    return <AuthenticatedHome userName={userName} />;
-  }
-
-  return <LandingPage />;
+  return <LandingPage tracks={tracks} />;
 }

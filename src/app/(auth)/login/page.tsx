@@ -38,6 +38,7 @@ function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const callbackUrlParam = searchParams.get("callbackUrl");
@@ -51,9 +52,28 @@ function LoginPageContent() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setPendingVerificationEmail("");
     setIsLoading(true);
 
     try {
+      const validationResponse = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const validationData = await validationResponse.json().catch(() => null);
+
+      if (!validationResponse.ok) {
+        if (validationData?.code === "EMAIL_NOT_VERIFIED") {
+          setPendingVerificationEmail(email);
+          setError("メール確認が完了していません。確認後にログインできます。");
+          return;
+        }
+
+        setError(validationData?.error || "メールアドレスまたはパスワードが正しくありません。");
+        return;
+      }
+
       const result = await signIn("credentials", {
         email,
         password,
@@ -108,6 +128,16 @@ function LoginPageContent() {
           {error && (
             <p className="text-sm text-[var(--color-error)]">{error}</p>
           )}
+          {pendingVerificationEmail && (
+            <p className="text-sm text-[var(--text-secondary)]">
+              <Link
+                href={`/verify-email?email=${encodeURIComponent(pendingVerificationEmail)}`}
+                className="text-[var(--color-brand)] hover:underline"
+              >
+                確認メールを再発行する
+              </Link>
+            </p>
+          )}
           <Button
             type="submit"
             className="w-full"
@@ -126,6 +156,14 @@ function LoginPageContent() {
           className="text-[var(--color-brand)] hover:underline"
         >
           新規登録
+        </Link>
+      </p>
+      <p className="text-center text-sm text-[var(--text-secondary)] mt-3">
+        <Link
+          href="/reset-password"
+          className="text-[var(--color-brand)] hover:underline"
+        >
+          パスワードを再設定する
         </Link>
       </p>
     </div>

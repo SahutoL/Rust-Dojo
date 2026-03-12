@@ -75,6 +75,7 @@ AUTH_URL="http://localhost:3000"
 npx prisma dev --detach
 npx prisma migrate deploy
 npx prisma generate
+npm run content:bootstrap
 ```
 
 ### 4. 開発サーバーを起動
@@ -92,20 +93,22 @@ npm run dev
 npm run build
 npm run lint
 npm run admin:grant -- admin@example.com ADMIN
+npm run content:bootstrap
 ```
 
 補足:
 
 - `npm run build` では `next/font/google` の取得が発生するため、実行環境によってはネットワーク接続が必要です。
 - Prisma Client は `src/generated/prisma` に出力されます。
+- 初期教材と初期演習は `src/data/lessons.ts` / `src/data/problems.ts` を fixture として保持し、`npm run content:bootstrap` で DB に投入します。
 
 ## ディレクトリ構成
 
 ```text
 src/app         App Router のページと API ルート
 src/components  共通 UI とレイアウト部品
-src/data        MVP 用の教材・演習・ダッシュボードデータ
-src/lib         認証、Prisma、外部 API クライアント
+src/data        DB 集計層と fixture
+src/lib         認証、Prisma、教材 bootstrap、外部 API クライアント
 prisma          Prisma schema と migration
 public          静的アセット
 updates         完了済み作業ログ

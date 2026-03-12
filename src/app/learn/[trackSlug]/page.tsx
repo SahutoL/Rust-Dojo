@@ -1,20 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  tracks,
-  getTrack,
+  getCatalogTrackByCode,
   getTrackDisplayName,
   getTrackVolumeLabel,
-} from "@/data/lessons";
+} from "@/data/catalog";
 import { Card, Badge, Button } from "@/components/ui";
 import { Header } from "@/components/Header";
 import type { Metadata } from "next";
 
 type Params = Promise<{ trackSlug: string }>;
-
-export async function generateStaticParams() {
-  return tracks.map((t) => ({ trackSlug: t.code }));
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
@@ -22,7 +18,7 @@ export async function generateMetadata({
   params: Params;
 }): Promise<Metadata> {
   const { trackSlug } = await params;
-  const track = getTrack(trackSlug);
+  const track = await getCatalogTrackByCode(trackSlug);
   if (!track) return { title: "トラックが見つかりません" };
   return { title: track.name };
 }
@@ -33,9 +29,9 @@ export default async function TrackPage({
   params: Params;
 }) {
   const { trackSlug } = await params;
-  const track = getTrack(trackSlug);
+  const track = await getCatalogTrackByCode(trackSlug);
   if (!track) notFound();
-  const fallbackTrack = getTrack("track1");
+  const fallbackTrack = await getCatalogTrackByCode("track1");
 
   return (
     <div className="min-h-screen">

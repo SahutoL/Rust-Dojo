@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { tracks, getTrackVolumeLabel } from "@/data/lessons";
+import { getCatalogTracks, getTrackVolumeLabel } from "@/data/catalog";
 import { Card, Badge } from "@/components/ui";
 import { Header } from "@/components/Header";
 import type { Metadata } from "next";
@@ -18,7 +18,11 @@ const availabilityVariant = {
   coming_soon: "default",
 } as const;
 
-export default function LearnPage() {
+export const dynamic = "force-dynamic";
+
+export default async function LearnPage() {
+  const tracks = await getCatalogTracks();
+
   return (
     <div className="min-h-screen">
       <Header />

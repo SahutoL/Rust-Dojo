@@ -22,20 +22,25 @@ model User {
   id           String     @id @default(cuid())
   email        String     @unique
   passwordHash String     @map("password_hash")
+  emailVerifiedAt DateTime? @map("email_verified_at")
   status       UserStatus @default(ACTIVE)
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
-  profile         UserProfile?
-  enrollments     CourseEnrollment[]
-  submissions     Submission[]
-  progresses      Progress[]
-  reviewQueueItems ReviewQueueItem[]
-  recommendations Recommendation[]
-  achievements    UserAchievement[]
-  notifications   Notification[]
-  auditLogs       AuditLog[]         @relation("AuditTarget")
-  auditActions    AuditLog[]         @relation("AuditActor")
+  profile                 UserProfile?
+  enrollments             CourseEnrollment[]
+  submissions             Submission[]
+  progresses              Progress[]
+  lessonSectionProgresses LessonSectionProgress[]
+  problemLearningStats    ProblemLearningStat[]
+  reviewQueueItems        ReviewQueueItem[]
+  recommendations         Recommendation[]
+  achievements            UserAchievement[]
+  notifications           Notification[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  auditLogs               AuditLog[]               @relation("AuditTarget")
+  auditActions            AuditLog[]               @relation("AuditActor")
 
   @@map("users")
 }
@@ -74,14 +79,25 @@ model UserProfile {
 
 // ===== Tracks =====
 
+enum TrackAvailability {
+  AVAILABLE
+  COMING_SOON
+}
+
 model Track {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  description String?
-  sortOrder   Int      @default(0) @map("sort_order")
+  id               String            @id @default(cuid())
+  code             String            @unique
+  label            String?
+  name             String
+  description      String?
+  gradient         String?
+  availability     TrackAvailability @default(AVAILABLE)
+  roadmapTopicsJson Json?            @map("roadmap_topics_json")
+  launchNote       String?           @map("launch_note") @db.Text
+  sortOrder        Int               @default(0) @map("sort_order")
 
   lessons     Lesson[]
+  problems    Problem[]
   enrollments CourseEnrollment[]
 
   @@map("tracks")
@@ -105,6 +121,8 @@ model Lesson {
   track    Track           @relation(fields: [trackId], references: [id], onDelete: Cascade)
   sections LessonSection[]
   tags     LessonTag[]
+  sectionProgresses LessonSectionProgress[]
+  relatedProblems   ProblemLesson[]
 
   @@map("lessons")
 }
@@ -126,11 +144,14 @@ model LessonSection {
   id          String      @id @default(cuid())
   lessonId    String      @map("lesson_id")
   sectionType SectionType @map("section_type")
+  isRequired  Boolean     @default(true) @map("is_required")
   title       String?
   content     String      @db.Text
+  payloadJson Json?       @map("payload_json")
   sortOrder   Int         @default(0) @map("sort_order")
 
-  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  lesson     Lesson                 @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  progresses LessonSectionProgress[]
 
   @@map("lesson_sections")
 }
@@ -165,26 +186,31 @@ enum Difficulty {
 }
 
 model Problem {
-  id              String      @id @default(cuid())
-  type            ProblemType
-  title           String
-  statement       String      @db.Text
-  difficulty      Difficulty  @default(EASY)
-  constraintsText String?     @map("constraints_text") @db.Text
-  inputFormat     String?     @map("input_format") @db.Text
-  outputFormat    String?     @map("output_format") @db.Text
-  solutionOutline String?     @map("solution_outline") @db.Text
-  hintText        String?     @map("hint_text") @db.Text
-  explanationText String?     @map("explanation_text") @db.Text
-  initialCode     String?     @map("initial_code") @db.Text
-  sortOrder       Int         @default(0) @map("sort_order")
-  isPublished     Boolean     @default(false) @map("is_published")
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
+  id               String      @id @default(cuid())
+  trackId          String?     @map("track_id")
+  type             ProblemType
+  title            String
+  statement        String      @db.Text
+  difficulty       Difficulty  @default(EASY)
+  estimatedMinutes Int         @default(10) @map("estimated_minutes")
+  constraintsText  String?     @map("constraints_text") @db.Text
+  inputFormat      String?     @map("input_format") @db.Text
+  outputFormat     String?     @map("output_format") @db.Text
+  solutionOutline  String?     @map("solution_outline") @db.Text
+  hintText         String?     @map("hint_text") @db.Text
+  explanationText  String?     @map("explanation_text") @db.Text
+  initialCode      String?     @map("initial_code") @db.Text
+  sortOrder        Int         @default(0) @map("sort_order")
+  isPublished      Boolean     @default(false) @map("is_published")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
 
-  testCases   ProblemTestCase[]
-  submissions Submission[]
-  tags        ProblemTag[]
+  track         Track?               @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  testCases     ProblemTestCase[]
+  submissions   Submission[]
+  tags          ProblemTag[]
+  relatedLessons ProblemLesson[]
+  learningStats ProblemLearningStat[]
 
   @@map("problems")
 }
@@ -210,6 +236,17 @@ model ProblemTestCase {
   results SubmissionResult[]
 
   @@map("problem_test_cases")
+}
+
+model ProblemLesson {
+  problemId String @map("problem_id")
+  lessonId  String @map("lesson_id")
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  lesson  Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@id([problemId, lessonId])
+  @@map("problem_lessons")
 }
 
 // ===== Submissions =====
@@ -292,6 +329,23 @@ model Progress {
   @@map("progresses")
 }
 
+model LessonSectionProgress {
+  id          String        @id @default(cuid())
+  userId      String        @map("user_id")
+  lessonId    String        @map("lesson_id")
+  sectionId   String        @map("section_id")
+  status      ProgressState @default(NOT_STARTED)
+  payloadJson Json?         @map("payload_json")
+  completedAt DateTime?     @map("completed_at")
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson   Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  section LessonSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sectionId])
+  @@map("lesson_section_progresses")
+}
+
 // ===== Review Queue =====
 
 enum ReviewReasonType {
@@ -315,6 +369,31 @@ model ReviewQueueItem {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("review_queue_items")
+}
+
+enum ProblemCompletionMethod {
+  AC
+  EXPLANATION_VIEWED
+}
+
+model ProblemLearningStat {
+  id                 String                   @id @default(cuid())
+  userId             String                   @map("user_id")
+  problemId          String                   @map("problem_id")
+  firstViewedAt      DateTime                 @default(now()) @map("first_viewed_at")
+  lastViewedAt       DateTime                 @default(now()) @map("last_viewed_at")
+  attemptCount       Int                      @default(0) @map("attempt_count")
+  waCount            Int                      @default(0) @map("wa_count")
+  ceCount            Int                      @default(0) @map("ce_count")
+  longTimeCount      Int                      @default(0) @map("long_time_count")
+  explanationViewedAt DateTime?              @map("explanation_viewed_at")
+  completionMethod   ProblemCompletionMethod? @map("completion_method")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, problemId])
+  @@map("problem_learning_stats")
 }
 
 // ===== Recommendations =====
@@ -440,6 +519,32 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  tokenHash  String   @unique @map("token_hash")
+  expiresAt  DateTime @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  tokenHash  String   @unique @map("token_hash")
+  expiresAt  DateTime @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_tokens")
 }
 
 // ===== Admin / Audit =====

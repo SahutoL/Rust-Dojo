@@ -1,5 +1,5 @@
 import { executeRustCode, injectStdin } from "@/lib/playground";
-import { getProblem } from "@/data/problems";
+import { getCatalogProblemById } from "@/data/catalog";
 import { persistSubmissionForUser } from "@/data/learningService";
 
 export type SubmissionStatus = "AC" | "WA" | "CE" | "TLE" | "RE";
@@ -35,7 +35,7 @@ export async function executeCode(code: string, stdin?: string) {
 }
 
 export async function runProblemCode(problemId: string, code: string) {
-  const problem = getProblem(problemId);
+  const problem = await getCatalogProblemById(problemId);
 
   if (!problem) {
     return null;
@@ -55,7 +55,7 @@ export async function submitProblemCode({
   problemId: string;
   userId?: string;
 }): Promise<SubmitResponse | null> {
-  const problem = getProblem(problemId);
+  const problem = await getCatalogProblemById(problemId);
 
   if (!problem) {
     return null;

@@ -2,6 +2,18 @@
 
 ## 2026-03-12
 
+### 重大指摘解消バッチ
+- [x] 教材の正本を DB へ移行 — 公開ページ `/` `/learn*` `/exercises*` と `GET /api/tracks|lessons|problems*` を DB 読み出しへ切り替え、`src/data/lessons.ts` / `src/data/problems.ts` は bootstrap fixture としてのみ扱う構成へ整理
+- [x] コンテンツ bootstrap の明示化 — runtime 同期をやめ、`npm run content:bootstrap` で track / lesson / lesson section / problem / testcase / tag / related lesson を DB に投入できるように変更
+- [x] lesson 完了条件の spec 準拠化 — `LessonSectionProgress` を導入し、解説既読 + 必須 quiz 正答 + 必須 code execution 成功を満たしたときだけ `COMPLETED` になるように再設計
+- [x] problem 完了条件と復習イベントの整理 — `ProblemLearningStat` を導入し、`AC` または `非 AC 3 回以上 + 解説閲覧` を完了条件に変更、`WA` `CE` `LONG_TIME` `EXPLANATION_VIEWED` `PERIODIC_REVIEW` を学習サービスへ集約
+- [x] 推薦ロジックの DB 集計化 — 診断結果、完了 lesson、直近提出、タグ別正答率、CE / WA 傾向、track の公開状態を使う形に切り替え、`coming_soon` track を直接推薦しないように変更
+- [x] 管理画面の write 対応 — `POST/PATCH /api/admin/lessons*` `POST/PATCH /api/admin/problems*` `POST /api/admin/testcases` と最小の mutation UI を追加し、成功時は `audit_logs` を必ず記録
+- [x] 認証 API の補完 — `POST /api/auth/login` `POST /api/auth/logout` `POST /api/auth/verify-email` `POST /api/auth/reset-password`、`/verify-email`、`/reset-password` を追加し、メール確認完了前は credentials login を拒否するように変更
+- [x] 登録フローの変更 — register 後に自動ログインせず、開発環境では verification / reset token preview を返して確認フローを辿れるようにした
+- [x] README の運用更新 — `npm run content:bootstrap` をセットアップと開発コマンドに追記し、fixture の役割を明記
+- [x] migration / bootstrap / lint / build 検証パス (`20260312132256_major_findings_batch`, `npm run content:bootstrap`, app routes 61 件)
+
 ### 仕様レビュー追補: レッスン表示と API 準拠
 - [x] レッスン画面の表示要件を補強 — 見出しベースの目次 / 進捗表示、スクロール位置保存、モバイル縦積みレイアウト、実行エリアを追加
 - [x] レッスン完了導線の補強 — 完了記録を `POST /api/lessons/[trackSlug]/[lessonSlug]/complete` に分離し、見出し閲覧率と実行済み状態を満たした時だけ完了を記録するように変更

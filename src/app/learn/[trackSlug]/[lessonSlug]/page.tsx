@@ -1,25 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { tracks, getTrack, getLesson } from "@/data/lessons";
+import {
+  getCatalogLessonByTrackAndSlug,
+  getCatalogTrackByCode,
+} from "@/data/catalog";
+import { getLessonSectionProgressForUser } from "@/data/learningService";
 import { Header } from "@/components/Header";
 import type { Metadata } from "next";
 import {
   extractLessonHeadings,
   extractLessonSandboxCode,
 } from "@/lib/lesson-markdown";
+import { auth } from "@/lib/auth";
 import { LessonReadingWorkspace } from "./LessonReadingWorkspace";
 
 type Params = Promise<{ trackSlug: string; lessonSlug: string }>;
-
-export async function generateStaticParams() {
-  const result: { trackSlug: string; lessonSlug: string }[] = [];
-  for (const track of tracks) {
-    for (const lesson of track.lessons) {
-      result.push({ trackSlug: track.code, lessonSlug: lesson.slug });
-    }
-  }
-  return result;
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
@@ -27,7 +23,7 @@ export async function generateMetadata({
   params: Params;
 }): Promise<Metadata> {
   const { trackSlug, lessonSlug } = await params;
-  const lesson = getLesson(trackSlug, lessonSlug);
+  const lesson = await getCatalogLessonByTrackAndSlug(trackSlug, lessonSlug);
   if (!lesson) return { title: "レッスンが見つかりません" };
   return { title: lesson.title };
 }
@@ -38,9 +34,18 @@ export default async function LessonPage({
   params: Params;
 }) {
   const { trackSlug, lessonSlug } = await params;
-  const track = getTrack(trackSlug);
-  const lesson = getLesson(trackSlug, lessonSlug);
+  const sessionPromise = auth();
+  const [track, lesson, session] = await Promise.all([
+    getCatalogTrackByCode(trackSlug),
+    getCatalogLessonByTrackAndSlug(trackSlug, lessonSlug),
+    sessionPromise,
+  ]);
   if (!track || !lesson) notFound();
+
+  const initialSectionProgress =
+    session?.user
+      ? await getLessonSectionProgressForUser(session.user.id, lesson.id)
+      : null;
 
   const currentIndex = track.lessons.findIndex((l) => l.slug === lessonSlug);
   const prevLesson = currentIndex > 0 ? track.lessons[currentIndex - 1] : null;
@@ -82,10 +87,13 @@ export default async function LessonPage({
         <LessonReadingWorkspace
           key={`${track.code}/${lesson.slug}`}
           trackCode={track.code}
+          lessonId={lesson.id}
           lessonSlug={lesson.slug}
           content={lesson.content}
+          sections={lesson.sections}
           headings={headings}
           initialSandboxCode={initialSandboxCode}
+          initialSectionProgress={initialSectionProgress}
         />
 
         {/* Navigation */}

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaClient } from "../generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 
@@ -31,4 +31,4 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export type { PrismaClient };
-export * from "@/generated/prisma/enums";
+export * from "../generated/prisma/enums";

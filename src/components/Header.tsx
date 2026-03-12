@@ -86,7 +86,14 @@ export function Header({ fixed = false }: HeaderProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => signOut({ callbackUrl: "/" })}
+                  onClick={async () => {
+                    try {
+                      await fetch("/api/auth/logout", { method: "POST" });
+                    } catch {
+                      // セッション破棄は signOut 側でも行う
+                    }
+                    void signOut({ callbackUrl: "/" });
+                  }}
                 >
                   ログアウト
                 </Button>

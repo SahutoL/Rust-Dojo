@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { createEmailVerificationToken } from "@/lib/auth-tokens";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -56,9 +57,16 @@ export async function POST(request: NextRequest) {
         email: true,
       },
     });
+    const verificationTokenPreview = await createEmailVerificationToken(user.id);
 
     return NextResponse.json(
-      { id: user.id, email: user.email },
+      {
+        id: user.id,
+        email: user.email,
+        ...(process.env.NODE_ENV !== "production"
+          ? { verificationTokenPreview }
+          : {}),
+      },
       { status: 201 }
     );
   } catch (error) {

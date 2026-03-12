@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "admin:grant": "node scripts/admin-grant.mjs"
+    "admin:grant": "node scripts/admin-grant.mjs",
+    "content:bootstrap": "node --import tsx scripts/bootstrap-content.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -34,6 +35,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

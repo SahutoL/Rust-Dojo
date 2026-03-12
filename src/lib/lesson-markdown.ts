@@ -4,6 +4,11 @@ export interface LessonHeading {
   level: 2 | 3;
 }
 
+export interface ExtractedLessonSection {
+  title: string;
+  markdown: string;
+}
+
 const DEFAULT_LESSON_SANDBOX_CODE = `fn main() {
     println!("Hello, Rust!");
 }
@@ -71,4 +76,40 @@ export function extractLessonSandboxCode(content: string) {
   }
 
   return DEFAULT_LESSON_SANDBOX_CODE;
+}
+
+export function extractLessonMarkdownSections(content: string): ExtractedLessonSection[] {
+  const sections: ExtractedLessonSection[] = [];
+  const lines = content.split("\n");
+  let currentTitle = "導入";
+  let currentLines: string[] = [];
+
+  const flush = () => {
+    const markdown = currentLines.join("\n").trim();
+    if (markdown.length === 0) {
+      currentLines = [];
+      return;
+    }
+
+    sections.push({
+      title: currentTitle,
+      markdown,
+    });
+    currentLines = [];
+  };
+
+  for (const line of lines) {
+    const match = line.match(/^##\s+(.+)$/);
+
+    if (match) {
+      flush();
+      currentTitle = stripInlineMarkdown(match[1]);
+      continue;
+    }
+
+    currentLines.push(line);
+  }
+
+  flush();
+  return sections;
 }

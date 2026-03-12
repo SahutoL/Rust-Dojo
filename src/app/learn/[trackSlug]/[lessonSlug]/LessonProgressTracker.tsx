@@ -3,47 +3,56 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Badge, Button } from "@/components/ui";
+import { type LessonSectionProgressSummary } from "@/data/learningService";
 
-const visitedLessonKeys = new Set<string>();
+const visitedLessonIds = new Set<string>();
 
 export function LessonProgressTracker({
   trackCode,
+  lessonId,
   lessonSlug,
-  completedHeadingCount,
-  totalHeadingCount,
-  hasSuccessfulRun,
+  summary,
+  onSummaryChange,
 }: {
   trackCode: string;
+  lessonId: string;
   lessonSlug: string;
-  completedHeadingCount: number;
-  totalHeadingCount: number;
-  hasSuccessfulRun: boolean;
+  summary: LessonSectionProgressSummary | null;
+  onSummaryChange: (summary: LessonSectionProgressSummary) => void;
 }) {
   const { status } = useSession();
-  const lessonKey = `${trackCode}/${lessonSlug}`;
-  const [hasRecordedVisit, setHasRecordedVisit] = useState(false);
+  const [hasRecordedVisit, setHasRecordedVisit] = useState(
+    summary?.lessonProgressState === "IN_PROGRESS" ||
+      summary?.lessonProgressState === "COMPLETED"
+  );
   const [isCompleting, setIsCompleting] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false);
-  const minimumHeadingCount =
-    totalHeadingCount === 0 ? 0 : Math.max(1, Math.ceil(totalHeadingCount * 0.8));
-  const hasEnoughReading =
-    totalHeadingCount === 0 || completedHeadingCount >= minimumHeadingCount;
-  const canComplete = hasRecordedVisit && hasEnoughReading && hasSuccessfulRun;
+  const [isCompleted, setIsCompleted] = useState(
+    summary?.lessonProgressState === "COMPLETED"
+  );
+  const canComplete = summary?.canComplete ?? false;
+
+  useEffect(() => {
+    setIsCompleted(summary?.lessonProgressState === "COMPLETED");
+    setHasRecordedVisit(
+      summary?.lessonProgressState === "IN_PROGRESS" ||
+        summary?.lessonProgressState === "COMPLETED"
+    );
+  }, [summary]);
 
   useEffect(() => {
     if (
       status !== "authenticated" ||
       hasRecordedVisit ||
-      visitedLessonKeys.has(lessonKey)
+      visitedLessonIds.has(lessonId)
     ) {
-      if (visitedLessonKeys.has(lessonKey)) {
+      if (visitedLessonIds.has(lessonId)) {
         setHasRecordedVisit(true);
       }
       return;
     }
 
     const controller = new AbortController();
-    visitedLessonKeys.add(lessonKey);
+    visitedLessonIds.add(lessonId);
 
     void fetch(`/api/lessons/${trackCode}/${lessonSlug}/progress`, {
       method: "POST",
@@ -53,21 +62,33 @@ export function LessonProgressTracker({
       signal: controller.signal,
       body: JSON.stringify({ progressState: "IN_PROGRESS" }),
     })
-      .then((response) => {
-        if (response.ok) {
-          setHasRecordedVisit(true);
-        } else {
-          visitedLessonKeys.delete(lessonKey);
+      .then(async (response) => {
+        if (!response.ok) {
+          visitedLessonIds.delete(lessonId);
+          return;
         }
+
+        const data = await response.json().catch(() => null);
+        if (data?.summary) {
+          onSummaryChange(data.summary);
+        }
+        setHasRecordedVisit(true);
       })
       .catch(() => {
-        visitedLessonKeys.delete(lessonKey);
+        visitedLessonIds.delete(lessonId);
       });
 
     return () => {
       controller.abort();
     };
-  }, [hasRecordedVisit, lessonKey, lessonSlug, status, trackCode]);
+  }, [
+    hasRecordedVisit,
+    lessonId,
+    lessonSlug,
+    onSummaryChange,
+    status,
+    trackCode,
+  ]);
 
   if (status !== "authenticated") {
     return null;
@@ -76,13 +97,31 @@ export function LessonProgressTracker({
   return (
     <div className="flex flex-wrap items-center gap-3 mb-8">
       <Badge variant={isCompleted ? "success" : "info"} size="sm">
-        {isCompleted ? "完了を記録済み" : hasRecordedVisit ? "閲覧を記録済み" : "学習を記録中"}
+        {isCompleted
+          ? "完了を記録済み"
+          : hasRecordedVisit
+            ? "閲覧を記録済み"
+            : "学習を記録中"}
       </Badge>
-      <Badge variant={hasEnoughReading ? "success" : "default"} size="sm">
-        見出し {completedHeadingCount} / {totalHeadingCount}
+      <Badge
+        variant={
+          summary?.explanationCompletedCount === summary?.explanationTotalCount
+            ? "success"
+            : "default"
+        }
+        size="sm"
+      >
+        解説 {summary?.explanationCompletedCount ?? 0} /{" "}
+        {summary?.explanationTotalCount ?? 0}
       </Badge>
-      <Badge variant={hasSuccessfulRun ? "success" : "default"} size="sm">
-        {hasSuccessfulRun ? "実行済み" : "実行待ち"}
+      <Badge variant={summary?.quizCompleted ? "success" : "default"} size="sm">
+        {summary?.quizCompleted ? "クイズ正答" : "クイズ待ち"}
+      </Badge>
+      <Badge
+        variant={summary?.codeExecutionCompleted ? "success" : "default"}
+        size="sm"
+      >
+        {summary?.codeExecutionCompleted ? "実行課題完了" : "実行課題待ち"}
       </Badge>
       <Button
         type="button"
@@ -100,11 +139,13 @@ export function LessonProgressTracker({
                 method: "POST",
               }
             );
+            const data = await response.json().catch(() => null);
 
-            if (response.ok) {
+            if (response.ok && data?.summary) {
+              onSummaryChange(data.summary);
               setHasRecordedVisit(true);
               setIsCompleted(true);
-              visitedLessonKeys.add(lessonKey);
+              visitedLessonIds.add(lessonId);
             }
           } finally {
             setIsCompleting(false);
@@ -115,7 +156,7 @@ export function LessonProgressTracker({
       </Button>
       {!canComplete && !isCompleted && (
         <p className="text-xs text-[var(--text-tertiary)]">
-          見出しを一定量まで読み、実行エリアで 1 回動かすと完了を記録できます。
+          解説を読み切り、理解チェックに正答し、実行課題を通すと完了を記録できます。
         </p>
       )}
     </div>

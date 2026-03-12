@@ -1,8 +1,8 @@
-import { tracks } from "@/data/lessons";
-import { problems, type ProblemKind } from "@/data/problems";
 import {
+  ProblemType,
   ProgressState,
   SubmissionStatus,
+  TrackAvailability,
   UserStatus,
   prisma,
 } from "@/lib/prisma";
@@ -21,18 +21,6 @@ type ManagedSubmissionStatus =
   | typeof SubmissionStatus.TLE
   | typeof SubmissionStatus.RE;
 
-const difficultyOrder = {
-  easy: 0,
-  medium: 1,
-  hard: 2,
-} as const;
-
-const problemKindLabel: Record<ProblemKind, string> = {
-  implementation: "実装",
-  compile_error_fix: "コンパイル修正",
-  ownership_fix: "所有権修正",
-};
-
 export interface AdminOverviewSnapshot {
   trackCount: number;
   availableTrackCount: number;
@@ -48,6 +36,7 @@ export interface AdminOverviewSnapshot {
 }
 
 export interface AdminLessonItemSnapshot {
+  id: string;
   slug: string;
   title: string;
   estimatedMinutes: number;
@@ -74,7 +63,7 @@ export interface AdminProblemRowSnapshot {
   trackCode: string;
   trackName: string;
   difficulty: "easy" | "medium" | "hard";
-  kind: ProblemKind;
+  kind: "implementation" | "compile_error_fix" | "ownership_fix";
   kindLabel: string;
   estimatedMinutes: number;
   relatedLessonCount: number;
@@ -130,71 +119,34 @@ export interface AdminSnapshot {
   userAnalytics: AdminUserAnalyticsSnapshot;
 }
 
-export function getDifficultyLabel(value: AdminProblemRowSnapshot["difficulty"]) {
-  if (value === "easy") return "easy";
-  if (value === "medium") return "medium";
-  return "hard";
+function parseRoadmapTopics(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
 }
 
-function buildLessonRows(): AdminLessonRowSnapshot[] {
-  return tracks.map((track) => ({
-    trackCode: track.code,
-    trackLabel: track.label,
-    trackName: track.name,
-    availability: track.availability,
-    roadmapTopicCount: track.roadmapTopics.length,
-    publishedLessonCount:
-      track.availability === "available" ? track.lessons.length : 0,
-    totalMinutes: track.lessons.reduce(
-      (sum, lesson) => sum + lesson.estimatedMinutes,
-      0
-    ),
-    launchNote: track.launchNote,
-    roadmapTopics: track.roadmapTopics,
-    lessons: track.lessons.map((lesson) => ({
-      slug: lesson.slug,
-      title: lesson.title,
-      estimatedMinutes: lesson.estimatedMinutes,
-      statusLabel: "公開",
-      href: `/learn/${track.code}/${lesson.slug}`,
-    })),
-  }));
+function mapAvailability(value: TrackAvailability) {
+  return value === TrackAvailability.COMING_SOON ? "coming_soon" : "available";
 }
 
-function buildProblemRows(): AdminProblemRowSnapshot[] {
-  const trackOrder = new Map(tracks.map((track, index) => [track.code, index]));
-  const trackNameMap = new Map(tracks.map((track) => [track.code, track.name]));
+function mapDifficulty(value: string): AdminProblemRowSnapshot["difficulty"] {
+  if (value === "MEDIUM") return "medium";
+  if (value === "HARD" || value === "EXPERT") return "hard";
+  return "easy";
+}
 
-  return [...problems]
-    .sort((left, right) => {
-      return (
-        (trackOrder.get(left.trackCode) ?? 999) -
-          (trackOrder.get(right.trackCode) ?? 999) ||
-        difficultyOrder[left.difficulty] - difficultyOrder[right.difficulty] ||
-        left.title.localeCompare(right.title, "ja")
-      );
-    })
-    .map((problem) => {
-      const sampleTestCaseCount = problem.testCases.filter(
-        (testCase) => !testCase.isHidden
-      ).length;
-      const hiddenTestCaseCount = problem.testCases.length - sampleTestCaseCount;
+function mapProblemKind(value: ProblemType): AdminProblemRowSnapshot["kind"] {
+  if (value === ProblemType.COMPILE_ERROR_FIX) return "compile_error_fix";
+  if (value === ProblemType.OWNERSHIP_FIX) return "ownership_fix";
+  return "implementation";
+}
 
-      return {
-        problemId: problem.id,
-        title: problem.title,
-        trackCode: problem.trackCode,
-        trackName: trackNameMap.get(problem.trackCode) ?? problem.trackCode,
-        difficulty: problem.difficulty,
-        kind: problem.kind,
-        kindLabel: problemKindLabel[problem.kind],
-        estimatedMinutes: problem.estimatedMinutes,
-        relatedLessonCount: problem.relatedLessonSlugs.length,
-        sampleTestCaseCount,
-        hiddenTestCaseCount,
-        href: `/exercises/${problem.id}`,
-      };
-    });
+function getProblemKindLabel(kind: AdminProblemRowSnapshot["kind"]) {
+  if (kind === "compile_error_fix") return "コンパイル修正";
+  if (kind === "ownership_fix") return "所有権修正";
+  return "実装";
 }
 
 function buildStatusCounts(
@@ -245,44 +197,132 @@ function buildEmptyUserAnalyticsSnapshot(): AdminUserAnalyticsSnapshot {
 }
 
 export async function getAdminSnapshot(): Promise<AdminSnapshot> {
-  const lessonRows = buildLessonRows();
-  const problemRows = buildProblemRows();
-  const sampleTestCaseCount = problems.reduce(
-    (sum, problem) =>
-      sum + problem.testCases.filter((testCase) => !testCase.isHidden).length,
-    0
-  );
-  const hiddenTestCaseCount = problems.reduce(
-    (sum, problem) =>
-      sum + problem.testCases.filter((testCase) => testCase.isHidden).length,
-    0
-  );
-  const emptyGrading = buildEmptyGradingSnapshot();
-  const emptyUserAnalytics = buildEmptyUserAnalyticsSnapshot();
+  const [tracks, problems] = await Promise.all([
+    prisma.track.findMany({
+      orderBy: { sortOrder: "asc" },
+      include: {
+        lessons: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+            estimatedMinutes: true,
+            isPublished: true,
+          },
+        },
+      },
+    }),
+    prisma.problem.findMany({
+      orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+      include: {
+        track: {
+          select: {
+            code: true,
+            name: true,
+          },
+        },
+        testCases: {
+          select: {
+            caseType: true,
+          },
+        },
+        relatedLessons: {
+          select: {
+            lessonId: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const lessonRows = tracks.map((track) => {
+    const roadmapTopics = parseRoadmapTopics(track.roadmapTopicsJson);
+    const publishedLessons = track.lessons.filter((lesson) => lesson.isPublished);
+
+    return {
+      trackCode: track.code,
+      trackLabel: track.label ?? track.code.toUpperCase(),
+      trackName: track.name,
+      availability: mapAvailability(track.availability),
+      roadmapTopicCount: roadmapTopics.length,
+      publishedLessonCount: publishedLessons.length,
+      totalMinutes: publishedLessons.reduce(
+        (sum, lesson) => sum + lesson.estimatedMinutes,
+        0
+      ),
+      launchNote: track.launchNote ?? undefined,
+      roadmapTopics,
+      lessons: track.lessons.map((lesson) => ({
+        id: lesson.id,
+        slug: lesson.slug,
+        title: lesson.title,
+        estimatedMinutes: lesson.estimatedMinutes,
+        statusLabel: lesson.isPublished ? "公開" : "下書き",
+        href: `/learn/${track.code}/${lesson.slug}`,
+      })),
+    } satisfies AdminLessonRowSnapshot;
+  });
+
+  const problemRows = problems.map((problem) => {
+    const kind = mapProblemKind(problem.type);
+    const sampleTestCaseCount = problem.testCases.filter(
+      (testCase) => testCase.caseType === "SAMPLE"
+    ).length;
+    const hiddenTestCaseCount =
+      problem.testCases.length - sampleTestCaseCount;
+
+    return {
+      problemId: problem.id,
+      title: problem.title,
+      trackCode: problem.track?.code ?? "unassigned",
+      trackName: problem.track?.name ?? "未割り当て",
+      difficulty: mapDifficulty(problem.difficulty),
+      kind,
+      kindLabel: getProblemKindLabel(kind),
+      estimatedMinutes: problem.estimatedMinutes,
+      relatedLessonCount: problem.relatedLessons.length,
+      sampleTestCaseCount,
+      hiddenTestCaseCount,
+      href: `/exercises/${problem.id}`,
+    } satisfies AdminProblemRowSnapshot;
+  });
+
   const staticOverview = {
     trackCount: tracks.length,
     availableTrackCount: tracks.filter(
-      (track) => track.availability === "available"
+      (track) => track.availability === TrackAvailability.AVAILABLE
     ).length,
-    lessonCount: lessonRows.reduce(
-      (sum, row) => sum + row.lessons.length,
+    lessonCount: tracks.reduce((sum, track) => sum + track.lessons.length, 0),
+    publishedLessonCount: tracks.reduce(
+      (sum, track) => sum + track.lessons.filter((lesson) => lesson.isPublished).length,
       0
     ),
-    publishedLessonCount: lessonRows.reduce(
-      (sum, row) => sum + row.publishedLessonCount,
+    totalLessonMinutes: tracks.reduce(
+      (sum, track) =>
+        sum +
+        track.lessons
+          .filter((lesson) => lesson.isPublished)
+          .reduce((lessonSum, lesson) => lessonSum + lesson.estimatedMinutes, 0),
       0
     ),
-    totalLessonMinutes: lessonRows.reduce(
-      (sum, row) => sum + row.totalMinutes,
+    problemCount: problems.filter((problem) => problem.isPublished).length,
+    sampleTestCaseCount: problems.reduce(
+      (sum, problem) =>
+        sum +
+        problem.testCases.filter((testCase) => testCase.caseType === "SAMPLE").length,
       0
     ),
-    problemCount: problemRows.length,
-    sampleTestCaseCount,
-    hiddenTestCaseCount,
+    hiddenTestCaseCount: problems.reduce(
+      (sum, problem) =>
+        sum +
+        problem.testCases.filter((testCase) => testCase.caseType === "HIDDEN").length,
+      0
+    ),
     registeredUserCount: 0,
     submissionCount: 0,
     activeAdminCount: 0,
-  };
+  } satisfies AdminOverviewSnapshot;
 
   try {
     const [
@@ -402,8 +442,8 @@ export async function getAdminSnapshot(): Promise<AdminSnapshot> {
       overview: staticOverview,
       lessonRows,
       problemRows,
-      grading: emptyGrading,
-      userAnalytics: emptyUserAnalytics,
+      grading: buildEmptyGradingSnapshot(),
+      userAnalytics: buildEmptyUserAnalyticsSnapshot(),
     };
   }
 }

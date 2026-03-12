@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLesson, getTrack } from "@/data/lessons";
+import { getCatalogLessonByTrackAndSlug } from "@/data/catalog";
 
 type Params = Promise<{ trackSlug: string; lessonSlug: string }>;
 
@@ -8,10 +8,9 @@ export async function GET(
   { params }: { params: Params }
 ) {
   const { trackSlug, lessonSlug } = await params;
-  const track = getTrack(trackSlug);
-  const lesson = getLesson(trackSlug, lessonSlug);
+  const lesson = await getCatalogLessonByTrackAndSlug(trackSlug, lessonSlug);
 
-  if (!track || !lesson) {
+  if (!lesson) {
     return NextResponse.json(
       { error: "レッスンが見つかりません。" },
       { status: 404 }
@@ -19,15 +18,16 @@ export async function GET(
   }
 
   return NextResponse.json({
-    id: `${track.code}/${lesson.slug}`,
-    trackCode: track.code,
-    trackName: track.name,
+    id: lesson.id,
+    trackCode: lesson.track.code,
+    trackName: lesson.track.name,
     slug: lesson.slug,
     title: lesson.title,
     summary: lesson.summary,
     estimatedMinutes: lesson.estimatedMinutes,
     content: lesson.content,
-    isPublished: track.availability === "available",
-    href: `/learn/${track.code}/${lesson.slug}`,
+    isPublished: lesson.track.availability === "available",
+    href: `/learn/${lesson.track.code}/${lesson.slug}`,
+    sections: lesson.sections,
   });
 }

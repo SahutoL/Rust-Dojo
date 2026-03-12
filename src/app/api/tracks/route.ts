@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { tracks } from "@/data/lessons";
+import { getCatalogTracks } from "@/data/catalog";
 
 export async function GET() {
+  const tracks = await getCatalogTracks();
+
   return NextResponse.json({
     tracks: tracks.map((track) => ({
       code: track.code,

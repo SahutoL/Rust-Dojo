@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getProblem } from "@/data/problems";
+import { getCatalogProblemById } from "@/data/catalog";
 import { ProgressState } from "@/lib/prisma";
 import { recordProblemProgress } from "@/data/learningService";
 
@@ -32,7 +32,7 @@ export async function POST(
     }
 
     const { problemId } = await params;
-    const problem = getProblem(problemId);
+    const problem = await getCatalogProblemById(problemId);
 
     if (!problem) {
       return NextResponse.json(
