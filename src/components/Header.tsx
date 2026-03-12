@@ -14,10 +14,15 @@ export function Header({ fixed = false }: HeaderProps) {
   const { data: session, status } = useSession();
   const pathname = usePathname();
   const isAuth = status === "authenticated";
+  const isAdmin = Boolean(session?.user.adminRole);
   const navItems = [
     { href: "/learn", label: "学ぶ", requiresAuth: false },
     { href: "/exercises", label: "演習", requiresAuth: false },
+    { href: "/learn/track3", label: "競プロ", requiresAuth: false },
+    { href: "/learn/track2", label: "実務", requiresAuth: false },
     { href: "/dashboard", label: "進捗", requiresAuth: true },
+    { href: "/review", label: "復習", requiresAuth: true },
+    { href: "/admin", label: "管理", requiresAuth: true, requiresAdmin: true },
   ];
 
   const isActive = (href: string) =>
@@ -51,7 +56,8 @@ export function Header({ fixed = false }: HeaderProps) {
             <div className="hidden sm:flex items-center gap-5 text-sm">
               {navItems.map(
                 (item) =>
-                  (!item.requiresAuth || isAuth) && (
+                  (!item.requiresAuth || isAuth) &&
+                  (!item.requiresAdmin || isAdmin) && (
                     <Link
                       key={item.href}
                       href={item.href}
@@ -104,7 +110,8 @@ export function Header({ fixed = false }: HeaderProps) {
         <div className="flex sm:hidden items-center gap-4 overflow-x-auto pb-1 text-sm">
           {navItems.map(
             (item) =>
-              (!item.requiresAuth || isAuth) && (
+              (!item.requiresAuth || isAuth) &&
+              (!item.requiresAdmin || isAdmin) && (
                 <Link
                   key={item.href}
                   href={item.href}

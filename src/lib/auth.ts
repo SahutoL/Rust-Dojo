@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { getAdminRoleForUser, isSessionAdminRole } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -59,12 +60,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.id = user.id;
         token.name = user.name;
       }
+
+      if (typeof token.id === "string") {
+        token.adminRole = await getAdminRoleForUser(token.id);
+      } else {
+        token.adminRole = null;
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         if (token.id) session.user.id = token.id as string;
         if (token.name) session.user.name = token.name as string;
+        session.user.adminRole =
+          isSessionAdminRole(token.adminRole) ? token.adminRole : null;
       }
       return session;
     },

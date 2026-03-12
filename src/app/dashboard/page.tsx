@@ -1,9 +1,19 @@
-"use client";
-
 import Link from "next/link";
-import { Card, Badge, Button } from "@/components/ui";
+import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { Badge, Button, Card } from "@/components/ui";
 import { Header } from "@/components/Header";
-import { dashboardSnapshot } from "@/data/dashboard";
+import {
+  learningSnapshot,
+  recommendationTypeLabel,
+  reviewReasonLabel,
+  sortReviewQueue,
+} from "@/data/learningSnapshot";
+import { auth } from "@/lib/auth";
+
+export const metadata: Metadata = {
+  title: "学習状況",
+};
 
 const progressStateLabel = {
   NOT_STARTED: "未着手",
@@ -17,19 +27,6 @@ const progressStateVariant = {
   COMPLETED: "success",
 } as const;
 
-const reviewReasonLabel = {
-  WRONG_ANSWER: "不正解の再確認",
-  COMPILE_ERROR: "コンパイルエラーの復習",
-  LONG_TIME: "時間がかかった問題",
-  PERIODIC_REVIEW: "間隔を空けた復習",
-} as const;
-
-const recommendationTypeLabel = {
-  NEXT_LESSON: "次に進む",
-  REVIEW_CONCEPT: "復習する",
-  SOLVE_PROBLEM: "問題を解く",
-} as const;
-
 const submissionVariant = {
   AC: "ac",
   WA: "wa",
@@ -37,6 +34,12 @@ const submissionVariant = {
   TLE: "tle",
   RE: "re",
 } as const;
+
+interface OverviewStat {
+  label: string;
+  value: string;
+  href?: string;
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -51,9 +54,50 @@ function formatPercent(value: number) {
   return `${value}%`;
 }
 
-export default function DashboardPage() {
-  const { user, overview, trackProgress, recentLessons, recentSubmissions, weakTags, recommendations, reviewQueue } =
-    dashboardSnapshot;
+function buildLoginHref(pathname: string) {
+  return `/login?callbackUrl=${encodeURIComponent(pathname)}`;
+}
+
+export default async function DashboardPage() {
+  const session = await auth();
+
+  if (!session?.user) {
+    redirect(buildLoginHref("/dashboard"));
+  }
+
+  const { overview, trackProgress, recentLessons, recentSubmissions, weakTags, recommendations } =
+    learningSnapshot;
+  const reviewQueuePreview = sortReviewQueue(learningSnapshot.reviewQueue).slice(0, 3);
+  const viewerName = session.user.name ?? learningSnapshot.user.displayName;
+  const recentWaCount = recentSubmissions.filter((submission) => submission.status === "WA").length;
+  const recentCeCount = recentSubmissions.filter((submission) => submission.status === "CE").length;
+  const overviewStats: OverviewStat[] = [
+    {
+      label: "学習時間",
+      value: `${overview.totalStudyMinutes} 分`,
+    },
+    {
+      label: "レッスン完了",
+      value: `${overview.completedLessons} / ${overview.totalLessons}`,
+    },
+    {
+      label: "演習 AC",
+      value: `${overview.solvedProblems} / ${overview.totalProblems}`,
+    },
+    {
+      label: "最近の正答率",
+      value: formatPercent(overview.recentAccuracy),
+    },
+    {
+      label: "連続学習",
+      value: `${overview.currentStreak} 日`,
+    },
+    {
+      label: "復習待ち",
+      value: `${overview.reviewQueueCount} 件`,
+      href: "/review",
+    },
+  ];
 
   return (
     <div className="min-h-screen">
@@ -62,50 +106,37 @@ export default function DashboardPage() {
       <div className="max-w-4xl mx-auto px-4 py-10">
         <h1 className="text-2xl font-bold tracking-tight mb-1">学習状況</h1>
         <p className="text-sm text-[var(--text-secondary)] mb-8">
-          {user.displayName} さんの学習スナップショットです。1 日の目安は {user.dailyMinutesGoal} 分です。
+          {viewerName} さんの学習スナップショットです。1 日の目安は{" "}
+          {learningSnapshot.user.dailyMinutesGoal} 分です。
         </p>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">
-          {[
-            {
-              label: "学習時間",
-              value: `${overview.totalStudyMinutes} 分`,
-            },
-            {
-              label: "レッスン完了",
-              value: `${overview.completedLessons} / ${overview.totalLessons}`,
-            },
-            {
-              label: "演習 AC",
-              value: `${overview.solvedProblems} / ${overview.totalProblems}`,
-            },
-            {
-              label: "最近の正答率",
-              value: formatPercent(overview.recentAccuracy),
-            },
-            {
-              label: "連続学習",
-              value: `${overview.currentStreak} 日`,
-            },
-            {
-              label: "復習待ち",
-              value: `${overview.reviewQueueCount} 件`,
-            },
-          ].map((stat) => (
-            <Card key={stat.label} variant="bordered" padding="md">
-              <p className="text-xs text-[var(--text-tertiary)] mb-1">
-                {stat.label}
-              </p>
-              <p className="text-lg font-bold">{stat.value}</p>
-            </Card>
-          ))}
+          {overviewStats.map((stat) => {
+            const content = (
+              <Card variant="bordered" padding="md" className={stat.href ? "h-full" : ""}>
+                <p className="text-xs text-[var(--text-tertiary)] mb-1">{stat.label}</p>
+                <p className="text-lg font-bold">{stat.value}</p>
+                {stat.href && (
+                  <p className="text-xs text-[var(--color-brand)] mt-2">復習ページを開く</p>
+                )}
+              </Card>
+            );
+
+            return stat.href ? (
+              <Link href={stat.href} key={stat.label}>
+                {content}
+              </Link>
+            ) : (
+              <div key={stat.label}>{content}</div>
+            );
+          })}
         </div>
 
         <div className="mb-10">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold">トラック進捗</h2>
             <p className="text-xs text-[var(--text-tertiary)]">
-              更新日時: {formatDateTime(dashboardSnapshot.generatedAt)}
+              更新日時: {formatDateTime(learningSnapshot.generatedAt)}
             </p>
           </div>
           <div className="space-y-3">
@@ -226,6 +257,25 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
           <div>
+            <h2 className="text-sm font-semibold mb-3">最近の CE / WA 傾向</h2>
+            <Card variant="bordered" padding="md">
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <p className="text-xs text-[var(--text-tertiary)] mb-1">WA</p>
+                  <p className="text-lg font-bold">{recentWaCount} 件</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[var(--text-tertiary)] mb-1">CE</p>
+                  <p className="text-lg font-bold">{recentCeCount} 件</p>
+                </div>
+              </div>
+              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                直近の提出でつまずきが出ている箇所を拾い直すと、復習キューの戻り先とつながりやすくなります。
+              </p>
+            </Card>
+          </div>
+
+          <div>
             <h2 className="text-sm font-semibold mb-3">苦手タグ</h2>
             <div className="space-y-2">
               {weakTags.map((tag) => (
@@ -245,46 +295,53 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
+        </div>
 
-          <div>
-            <h2 className="text-sm font-semibold mb-3">推薦学習</h2>
-            <div className="space-y-2">
-              {recommendations.map((recommendation) => (
-                <Card key={recommendation.id} variant="bordered" padding="sm">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium">{recommendation.title}</p>
-                      <p className="text-xs text-[var(--text-tertiary)] mt-1">
-                        {recommendation.reasonText}
-                      </p>
-                    </div>
-                    <Link href={recommendation.href}>
-                      <Button variant="ghost" size="sm">
-                        {recommendationTypeLabel[recommendation.recommendationType]}
-                      </Button>
-                    </Link>
+        <div className="mb-10">
+          <h2 className="text-sm font-semibold mb-3">推薦学習</h2>
+          <div className="space-y-2">
+            {recommendations.map((recommendation) => (
+              <Card key={recommendation.id} variant="bordered" padding="sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">{recommendation.title}</p>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                      {recommendation.reasonText}
+                    </p>
                   </div>
-                </Card>
-              ))}
-            </div>
+                  <Link href={recommendation.href}>
+                    <Button variant="ghost" size="sm">
+                      {recommendationTypeLabel[recommendation.recommendationType]}
+                    </Button>
+                  </Link>
+                </div>
+              </Card>
+            ))}
           </div>
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between gap-4 mb-3">
             <h2 className="text-sm font-semibold">復習キュー</h2>
-            <p className="text-xs text-[var(--text-tertiary)]">
-              最長連続学習: {overview.longestStreak} 日
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-[var(--text-tertiary)]">
+                最長連続学習: {overview.longestStreak} 日
+              </p>
+              <Link href="/review">
+                <Button variant="ghost" size="sm">
+                  すべて見る
+                </Button>
+              </Link>
+            </div>
           </div>
           <div className="space-y-2">
-            {reviewQueue.map((item) => (
+            {reviewQueuePreview.map((item) => (
               <Card key={item.id} variant="bordered" padding="sm">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-medium">{item.title}</p>
                     <p className="text-xs text-[var(--text-tertiary)]">
-                      {reviewReasonLabel[item.reasonType]} · 優先度 {item.priority} ·{" "}
+                      {reviewReasonLabel[item.reasonType]} · 重要度 {item.priority} ·{" "}
                       {formatDateTime(item.availableAt)}
                     </p>
                   </div>

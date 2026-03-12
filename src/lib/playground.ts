@@ -108,8 +108,6 @@ export function injectStdin(code: string, stdin: string): string {
   if (!stdin) return code;
 
   // std::io::stdin().read_line() パターンをモックに置き換える
-  const stdinLines = stdin.split("\n").filter((line) => line.length > 0);
-
   // read_line の呼び出しを文字列リテラルに置換するヘルパーを先頭に挿入
   const mockModule = `
 // -- stdin mock (auto-injected) --

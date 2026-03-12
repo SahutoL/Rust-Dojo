@@ -91,6 +91,7 @@ npm run dev
 npm run dev
 npm run build
 npm run lint
+npm run admin:grant -- admin@example.com ADMIN
 ```
 
 補足:
