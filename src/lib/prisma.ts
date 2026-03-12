@@ -7,6 +7,18 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+function isLocalDevelopmentDatabase(connectionString: string) {
+  try {
+    const url = new URL(connectionString);
+    return (
+      process.env.NODE_ENV !== "production" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function parsePoolNumber(name: string, fallback: number) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
@@ -18,16 +30,25 @@ function createPgPool() {
     throw new Error("DIRECT_DATABASE_URL or DATABASE_URL is not set");
   }
 
+  const isLocalDevDatabase = isLocalDevelopmentDatabase(connectionString);
+  const defaultMax = isLocalDevDatabase
+    ? 1
+    : process.env.NODE_ENV === "production"
+      ? 12
+      : 8;
+  const defaultConnectionTimeout = isLocalDevDatabase ? 10_000 : 3_000;
+  const defaultIdleTimeout = isLocalDevDatabase ? 5_000 : 30_000;
+
   return new pg.Pool({
     connectionString,
-    max: parsePoolNumber(
-      "PG_POOL_MAX",
-      process.env.NODE_ENV === "production" ? 12 : 8
+    max: parsePoolNumber("PG_POOL_MAX", defaultMax),
+    idleTimeoutMillis: parsePoolNumber(
+      "PG_POOL_IDLE_TIMEOUT_MS",
+      defaultIdleTimeout
     ),
-    idleTimeoutMillis: parsePoolNumber("PG_POOL_IDLE_TIMEOUT_MS", 30_000),
     connectionTimeoutMillis: parsePoolNumber(
       "PG_POOL_CONNECTION_TIMEOUT_MS",
-      3_000
+      defaultConnectionTimeout
     ),
     keepAlive: true,
   });

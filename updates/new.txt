@@ -25,6 +25,10 @@
 - [x] 再試行後も DB が不安定な場合は fixture から公開 track / lesson / problem を返す fallback を追加し、`/` `/learn` `/exercises` が 500 で落ちないように変更
 - [x] lesson / problem detail と検索系も published 範囲では同じ fallback に寄せ、公開導線全体を劣化運転可能にした
 
+### 追補修正: `prisma dev` ローカル DB 向けの接続プール調整
+- [x] `DIRECT_DATABASE_URL` が `localhost` / `127.0.0.1` を指す development 環境では、接続プール既定値を `max=1`, `connectionTimeoutMillis=10000`, `idleTimeoutMillis=5000` に自動調整
+- [x] `.env` 未設定でもローカルの Prisma 組み込み PostgreSQL に過剰接続しにくいように変更し、README にも挙動を追記
+
 ## 2026-03-12
 
 ### 重大指摘解消バッチ

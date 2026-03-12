@@ -75,6 +75,12 @@ PG_POOL_IDLE_TIMEOUT_MS="30000"
 - `PG_POOL_CONNECTION_TIMEOUT_MS`: 接続待ちタイムアウト。未指定時は `3000`
 - `PG_POOL_IDLE_TIMEOUT_MS`: アイドル接続の保持時間。未指定時は `30000`
 
+ローカルで `npx prisma dev` の組み込み PostgreSQL を使う場合は、未指定時でも接続プールを自動で保守的な設定に落とします。
+
+- `PG_POOL_MAX`: `1`
+- `PG_POOL_CONNECTION_TIMEOUT_MS`: `10000`
+- `PG_POOL_IDLE_TIMEOUT_MS`: `5000`
+
 ### 3. データベースを起動してスキーマを反映
 
 ```bash
