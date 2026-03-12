@@ -5,6 +5,32 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Card, Input } from "@/components/ui";
+import {
+  EDITOR_FONT_SIZE_COOKIE_NAME,
+  THEME_COOKIE_NAME,
+  parseEditorFontSize,
+  parseThemePreference,
+} from "@/lib/account-preferences";
+
+function writePreferenceCookie(name: string, value: string) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+}
+
+async function syncPreferenceCookies() {
+  const response = await fetch("/api/auth/me", { cache: "no-store" });
+
+  if (!response.ok) {
+    return;
+  }
+
+  const data = await response.json();
+  const theme = parseThemePreference(data?.preferences?.theme);
+  const editorFontSize = parseEditorFontSize(data?.preferences?.editorFontSize);
+
+  writePreferenceCookie(THEME_COOKIE_NAME, theme);
+  writePreferenceCookie(EDITOR_FONT_SIZE_COOKIE_NAME, String(editorFontSize));
+  document.documentElement.dataset.theme = theme;
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -56,6 +82,7 @@ export default function RegisterPage() {
         // 登録は成功したがログインに失敗した場合
         router.push("/login");
       } else {
+        await syncPreferenceCookies();
         router.push("/onboarding");
         router.refresh();
       }

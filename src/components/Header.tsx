@@ -78,7 +78,7 @@ export function Header({ fixed = false }: HeaderProps) {
             {isAuth && session?.user && (
               <>
                 <Link
-                  href="/dashboard"
+                  href="/profile"
                   className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   {session.user.name || session.user.email?.split("@")[0] || "ユーザー"}

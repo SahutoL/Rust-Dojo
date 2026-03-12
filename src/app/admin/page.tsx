@@ -84,6 +84,7 @@ export default async function AdminPage() {
   }
 
   const snapshot = await getAdminSnapshot();
+  const databaseHealthy = snapshot.databaseStatus.healthy;
   const difficultyCounts = {
     easy: snapshot.problemRows.filter((problem) => problem.difficulty === "easy").length,
     medium: snapshot.problemRows.filter((problem) => problem.difficulty === "medium").length,
@@ -92,11 +93,13 @@ export default async function AdminPage() {
   const overviewCards = [
     {
       label: "登録ユーザー",
-      value: `${snapshot.userAnalytics.registeredUserCount} 人`,
+      value: databaseHealthy
+        ? `${snapshot.userAnalytics.registeredUserCount} 人`
+        : "取得失敗",
     },
     {
       label: "管理者アカウント",
-      value: `${snapshot.overview.activeAdminCount} 件`,
+      value: databaseHealthy ? `${snapshot.overview.activeAdminCount} 件` : "取得失敗",
     },
     {
       label: "公開レッスン",
@@ -108,11 +111,13 @@ export default async function AdminPage() {
     },
     {
       label: "提出総数",
-      value: `${snapshot.overview.submissionCount} 件`,
+      value: databaseHealthy ? `${snapshot.overview.submissionCount} 件` : "取得失敗",
     },
     {
       label: "未解決の復習キュー",
-      value: `${snapshot.userAnalytics.unresolvedReviewQueueCount} 件`,
+      value: databaseHealthy
+        ? `${snapshot.userAnalytics.unresolvedReviewQueueCount} 件`
+        : "取得失敗",
     },
   ];
 
@@ -153,6 +158,20 @@ export default async function AdminPage() {
             </Card>
           ))}
         </div>
+
+        {!databaseHealthy && (
+          <Card variant="bordered" padding="md" className="mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <Badge variant="warning" size="sm">
+                集計取得失敗
+              </Badge>
+              <p className="font-medium">DB 集計を一時的に取得できません</p>
+            </div>
+            <p className="text-sm text-[var(--text-secondary)]">
+              {snapshot.databaseStatus.message}
+            </p>
+          </Card>
+        )}
 
         <div className="grid gap-6 xl:grid-cols-2">
           <Card variant="bordered" padding="lg">
@@ -330,7 +349,13 @@ export default async function AdminPage() {
               ))}
             </div>
 
-            {snapshot.grading.latestSubmissions.length === 0 ? (
+            {!databaseHealthy ? (
+              <div className="rounded-lg border border-dashed border-[var(--border-secondary)] px-4 py-3">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  現在は DB 集計に失敗しているため、採点状況を表示できません。接続復旧後に自動で反映されます。
+                </p>
+              </div>
+            ) : snapshot.grading.latestSubmissions.length === 0 ? (
               <div className="rounded-lg border border-dashed border-[var(--border-secondary)] px-4 py-3">
                 <p className="text-sm text-[var(--text-secondary)]">
                   提出データはまだありません。提出保存を入れる次段階までは、このセクションは空状態で運用します。
@@ -425,7 +450,13 @@ export default async function AdminPage() {
               </Card>
             </div>
 
-            {snapshot.userAnalytics.latestUsers.length === 0 ? (
+            {!databaseHealthy ? (
+              <div className="rounded-lg border border-dashed border-[var(--border-secondary)] px-4 py-3">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  現在は DB 集計に失敗しているため、ユーザー分析を表示できません。
+                </p>
+              </div>
+            ) : snapshot.userAnalytics.latestUsers.length === 0 ? (
               <div className="rounded-lg border border-dashed border-[var(--border-secondary)] px-4 py-3">
                 <p className="text-sm text-[var(--text-secondary)]">
                   登録ユーザーはまだありません。

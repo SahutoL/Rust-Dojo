@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Header } from "@/components/Header";
 import { ReviewPageClient } from "./ReviewPageClient";
 import { auth } from "@/lib/auth";
+import { getAccountSnapshot } from "@/lib/account";
 import { learningSnapshot } from "@/data/learningSnapshot";
 
 export const metadata: Metadata = {
@@ -20,11 +21,18 @@ export default async function ReviewPage() {
     redirect(buildLoginHref("/review"));
   }
 
+  const account = await getAccountSnapshot(session.user.id);
+
   return (
     <div className="min-h-screen">
       <Header />
       <ReviewPageClient
-        viewerName={session.user.name ?? learningSnapshot.user.displayName}
+        viewerName={
+          account?.displayName ?? session.user.name ?? learningSnapshot.user.displayName
+        }
+        dailyMinutesGoal={
+          account?.dailyMinutesGoal ?? learningSnapshot.user.dailyMinutesGoal
+        }
       />
     </div>
   );

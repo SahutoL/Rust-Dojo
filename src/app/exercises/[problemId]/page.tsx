@@ -9,6 +9,7 @@ import { problems } from "@/data/problems";
 import { getLesson, getTrack } from "@/data/lessons";
 import { LessonContent } from "@/app/learn/[trackSlug]/[lessonSlug]/LessonContent";
 import type { SubmitResponse, TestCaseResult } from "@/app/api/submit/route";
+import { readEditorFontSizeFromCookieHeader } from "@/lib/account-preferences";
 import dynamic from "next/dynamic";
 
 const Editor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
@@ -69,6 +70,11 @@ export default function ProblemPage() {
   const problem = problems.find((p) => p.id === problemId);
 
   const [code, setCode] = useState(problem?.initialCode ?? "");
+  const [editorFontSize] = useState(() =>
+    typeof document === "undefined"
+      ? 14
+      : readEditorFontSizeFromCookieHeader(document.cookie)
+  );
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [runOutput, setRunOutput] = useState<{
@@ -445,7 +451,7 @@ export default function ProblemPage() {
               value={code}
               onChange={(v) => setCode(v ?? "")}
               options={{
-                fontSize: 14,
+                fontSize: editorFontSize,
                 fontFamily: "var(--font-mono), monospace",
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,

@@ -119,6 +119,10 @@ export interface AdminUserAnalyticsSnapshot {
 
 export interface AdminSnapshot {
   generatedAt: string;
+  databaseStatus: {
+    healthy: boolean;
+    message?: string;
+  };
   overview: AdminOverviewSnapshot;
   lessonRows: AdminLessonRowSnapshot[];
   problemRows: AdminProblemRowSnapshot[];
@@ -213,6 +217,33 @@ function buildStatusCounts(
   return counts;
 }
 
+function buildEmptyGradingSnapshot(): AdminGradingSnapshot {
+  return {
+    recentSubmissionCount: 0,
+    caseResultCount: 0,
+    statusCounts: {
+      AC: 0,
+      WA: 0,
+      CE: 0,
+      TLE: 0,
+      RE: 0,
+    },
+    failureTrend: [],
+    latestSubmissions: [],
+  };
+}
+
+function buildEmptyUserAnalyticsSnapshot(): AdminUserAnalyticsSnapshot {
+  return {
+    registeredUserCount: 0,
+    activeProgressCount: 0,
+    completedProgressCount: 0,
+    unresolvedReviewQueueCount: 0,
+    recommendationCount: 0,
+    latestUsers: [],
+  };
+}
+
 export async function getAdminSnapshot(): Promise<AdminSnapshot> {
   const lessonRows = buildLessonRows();
   const problemRows = buildProblemRows();
@@ -226,124 +257,153 @@ export async function getAdminSnapshot(): Promise<AdminSnapshot> {
       sum + problem.testCases.filter((testCase) => testCase.isHidden).length,
     0
   );
+  const emptyGrading = buildEmptyGradingSnapshot();
+  const emptyUserAnalytics = buildEmptyUserAnalyticsSnapshot();
+  const staticOverview = {
+    trackCount: tracks.length,
+    availableTrackCount: tracks.filter(
+      (track) => track.availability === "available"
+    ).length,
+    lessonCount: lessonRows.reduce(
+      (sum, row) => sum + row.lessons.length,
+      0
+    ),
+    publishedLessonCount: lessonRows.reduce(
+      (sum, row) => sum + row.publishedLessonCount,
+      0
+    ),
+    totalLessonMinutes: lessonRows.reduce(
+      (sum, row) => sum + row.totalMinutes,
+      0
+    ),
+    problemCount: problemRows.length,
+    sampleTestCaseCount,
+    hiddenTestCaseCount,
+    registeredUserCount: 0,
+    submissionCount: 0,
+    activeAdminCount: 0,
+  };
 
-  const [
-    registeredUserCount,
-    submissionCount,
-    caseResultCount,
-    activeAdminCount,
-    activeProgressCount,
-    completedProgressCount,
-    unresolvedReviewQueueCount,
-    recommendationCount,
-    latestUsers,
-    latestSubmissions,
-  ] = await Promise.all([
-    prisma.user.count(),
-    prisma.submission.count(),
-    prisma.submissionResult.count(),
-    prisma.adminUser.count(),
-    prisma.progress.count({
-      where: { progressState: ProgressState.IN_PROGRESS },
-    }),
-    prisma.progress.count({
-      where: { progressState: ProgressState.COMPLETED },
-    }),
-    prisma.reviewQueueItem.count({
-      where: { resolvedAt: null },
-    }),
-    prisma.recommendation.count(),
-    prisma.user.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 8,
-      select: {
-        id: true,
-        email: true,
-        status: true,
-        createdAt: true,
-      },
-    }),
-    prisma.submission.findMany({
-      orderBy: { submittedAt: "desc" },
-      take: 12,
-      select: {
-        id: true,
-        status: true,
-        problemId: true,
-        submittedAt: true,
-        user: {
-          select: { email: true },
-        },
-        problem: {
-          select: { title: true },
-        },
-      },
-    }),
-  ]);
-
-  const statusCounts = buildStatusCounts(latestSubmissions);
-  const failureTrend = failingStatuses
-    .map((status) => ({
-      status,
-      count: statusCounts[status] ?? 0,
-    }))
-    .filter((entry) => entry.count > 0)
-    .sort((left, right) => right.count - left.count);
-
-  return {
-    generatedAt: new Date().toISOString(),
-    overview: {
-      trackCount: tracks.length,
-      availableTrackCount: tracks.filter(
-        (track) => track.availability === "available"
-      ).length,
-      lessonCount: lessonRows.reduce(
-        (sum, row) => sum + row.lessons.length,
-        0
-      ),
-      publishedLessonCount: lessonRows.reduce(
-        (sum, row) => sum + row.publishedLessonCount,
-        0
-      ),
-      totalLessonMinutes: lessonRows.reduce(
-        (sum, row) => sum + row.totalMinutes,
-        0
-      ),
-      problemCount: problemRows.length,
-      sampleTestCaseCount,
-      hiddenTestCaseCount,
+  try {
+    const [
       registeredUserCount,
       submissionCount,
-      activeAdminCount,
-    },
-    lessonRows,
-    problemRows,
-    grading: {
-      recentSubmissionCount: latestSubmissions.length,
       caseResultCount,
-      statusCounts,
-      failureTrend,
-      latestSubmissions: latestSubmissions.map((submission) => ({
-        submissionId: submission.id,
-        status: submission.status,
-        problemId: submission.problemId,
-        problemTitle: submission.problem?.title ?? submission.problemId,
-        userEmail: submission.user.email,
-        submittedAt: submission.submittedAt.toISOString(),
-      })),
-    },
-    userAnalytics: {
-      registeredUserCount,
+      activeAdminCount,
       activeProgressCount,
       completedProgressCount,
       unresolvedReviewQueueCount,
       recommendationCount,
-      latestUsers: latestUsers.map((user) => ({
-        userId: user.id,
-        email: user.email,
-        status: user.status,
-        createdAt: user.createdAt.toISOString(),
-      })),
-    },
-  };
+      latestUsers,
+      latestSubmissions,
+    ] = await prisma.$transaction([
+      prisma.user.count(),
+      prisma.submission.count(),
+      prisma.submissionResult.count(),
+      prisma.adminUser.count(),
+      prisma.progress.count({
+        where: { progressState: ProgressState.IN_PROGRESS },
+      }),
+      prisma.progress.count({
+        where: { progressState: ProgressState.COMPLETED },
+      }),
+      prisma.reviewQueueItem.count({
+        where: { resolvedAt: null },
+      }),
+      prisma.recommendation.count(),
+      prisma.user.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: {
+          id: true,
+          email: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+      prisma.submission.findMany({
+        orderBy: { submittedAt: "desc" },
+        take: 12,
+        select: {
+          id: true,
+          status: true,
+          problemId: true,
+          submittedAt: true,
+          user: {
+            select: { email: true },
+          },
+          problem: {
+            select: { title: true },
+          },
+        },
+      }),
+    ]);
+
+    const statusCounts = buildStatusCounts(latestSubmissions);
+    const failureTrend = failingStatuses
+      .map((status) => ({
+        status,
+        count: statusCounts[status] ?? 0,
+      }))
+      .filter((entry) => entry.count > 0)
+      .sort((left, right) => right.count - left.count);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      databaseStatus: {
+        healthy: true,
+      },
+      overview: {
+        ...staticOverview,
+        registeredUserCount,
+        submissionCount,
+        activeAdminCount,
+      },
+      lessonRows,
+      problemRows,
+      grading: {
+        recentSubmissionCount: latestSubmissions.length,
+        caseResultCount,
+        statusCounts,
+        failureTrend,
+        latestSubmissions: latestSubmissions.map((submission) => ({
+          submissionId: submission.id,
+          status: submission.status,
+          problemId: submission.problemId,
+          problemTitle: submission.problem?.title ?? submission.problemId,
+          userEmail: submission.user.email,
+          submittedAt: submission.submittedAt.toISOString(),
+        })),
+      },
+      userAnalytics: {
+        registeredUserCount,
+        activeProgressCount,
+        completedProgressCount,
+        unresolvedReviewQueueCount,
+        recommendationCount,
+        latestUsers: latestUsers.map((user) => ({
+          userId: user.id,
+          email: user.email,
+          status: user.status,
+          createdAt: user.createdAt.toISOString(),
+        })),
+      },
+    };
+  } catch (error) {
+    console.error("Admin snapshot query failed:", error);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      databaseStatus: {
+        healthy: false,
+        message:
+          "管理用の DB 集計を取得できませんでした。教材一覧のみ表示しています。",
+      },
+      overview: staticOverview,
+      lessonRows,
+      problemRows,
+      grading: emptyGrading,
+      userAnalytics: emptyUserAnalytics,
+    };
+  }
 }

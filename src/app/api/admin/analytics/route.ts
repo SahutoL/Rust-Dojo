@@ -22,6 +22,17 @@ export async function GET() {
     }
 
     const snapshot = await getAdminSnapshot();
+
+    if (!snapshot.databaseStatus.healthy) {
+      return NextResponse.json(
+        {
+          error: snapshot.databaseStatus.message,
+          snapshot,
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(snapshot);
   } catch (error) {
     console.error("Admin analytics error:", error);

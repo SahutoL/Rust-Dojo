@@ -1,7 +1,8 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { getAdminRoleForUser, isSessionAdminRole } from "@/lib/admin";
+import { isSessionAdminRole } from "@/lib/admin";
+import { buildDisplayName, getSessionIdentityForUser } from "@/lib/account";
 import { prisma } from "@/lib/prisma";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -35,8 +36,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         // 表示名のフォールバック: displayName → email の @ 前
-        const displayName =
-          user.profile?.displayName || email.split("@")[0];
+        const displayName = buildDisplayName(email, user.profile?.displayName);
 
         return {
           id: user.id,
@@ -61,8 +61,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.name = user.name;
       }
 
-      if (typeof token.id === "string") {
-        token.adminRole = await getAdminRoleForUser(token.id);
+      if (typeof token.id !== "string") {
+        token.adminRole = null;
+        return token;
+      }
+
+      const identity = await getSessionIdentityForUser(token.id);
+
+      if (identity) {
+        token.name = identity.displayName;
+        token.adminRole = identity.adminRole;
       } else {
         token.adminRole = null;
       }

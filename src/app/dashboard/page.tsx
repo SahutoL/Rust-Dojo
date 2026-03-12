@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Badge, Button, Card } from "@/components/ui";
 import { Header } from "@/components/Header";
+import { getAccountSnapshot } from "@/lib/account";
 import {
   learningSnapshot,
   recommendationTypeLabel,
@@ -65,10 +66,15 @@ export default async function DashboardPage() {
     redirect(buildLoginHref("/dashboard"));
   }
 
+  const account = await getAccountSnapshot(session.user.id);
+
   const { overview, trackProgress, recentLessons, recentSubmissions, weakTags, recommendations } =
     learningSnapshot;
   const reviewQueuePreview = sortReviewQueue(learningSnapshot.reviewQueue).slice(0, 3);
-  const viewerName = session.user.name ?? learningSnapshot.user.displayName;
+  const viewerName =
+    account?.displayName ?? session.user.name ?? learningSnapshot.user.displayName;
+  const dailyMinutesGoal =
+    account?.dailyMinutesGoal ?? learningSnapshot.user.dailyMinutesGoal;
   const recentWaCount = recentSubmissions.filter((submission) => submission.status === "WA").length;
   const recentCeCount = recentSubmissions.filter((submission) => submission.status === "CE").length;
   const overviewStats: OverviewStat[] = [
@@ -107,7 +113,7 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-bold tracking-tight mb-1">学習状況</h1>
         <p className="text-sm text-[var(--text-secondary)] mb-8">
           {viewerName} さんの学習スナップショットです。1 日の目安は{" "}
-          {learningSnapshot.user.dailyMinutesGoal} 分です。
+          {dailyMinutesGoal} 分です。
         </p>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">

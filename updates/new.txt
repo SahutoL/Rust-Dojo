@@ -2,6 +2,31 @@
 
 ## 2026-03-12
 
+### 仕様レビュー追補: アカウント基盤
+- [x] オンボーディング質問項目の補完 — `1 日の学習時間`、`希望ペース`、`競プロ経験`、`OSS`、`就職・転職` を追加し、`spec.md` 10.2 の質問群へ寄せた
+- [x] オンボーディング保存の拡張 — `goal=oss/career` を `PrimaryGoal.OSS/CAREER` へ写像し、`daily_study_time` から `daily_minutes_goal` を更新するように変更
+- [x] 保存済み診断結果の後方互換 — 旧 5 問形式の `onboarding_result` も読めるようにし、既存ユーザーのプロフィール表示が壊れないようにした
+- [x] ログイン / 登録直後の設定復元 — `GET /api/auth/me` からテーマ / エディタ設定を読み、Cookie と `data-theme` を同期して別ブラウザや再ログイン時も設定が反映されるようにした
+- [x] 個人データ API の `no-store` 明示 — `GET /api/auth/me` と `GET /api/onboarding/result` に `Cache-Control: no-store` を追加
+- [x] lint / build 再検証パス (静的生成 54 ページ)
+
+### アカウント基盤バッチ
+- [x] アカウント取得層の追加 — `src/lib/account.ts` と `src/lib/account-preferences.ts` を新設し、`UserProfile` / `preferencesJson` / `adminRole` を型付きでまとめて取得できるように整理
+- [x] セッション表示名の同期 — NextAuth の JWT / Session で `displayName` と `adminRole` を DB から再同期し、ヘッダーのユーザー名リンクを `/profile` へ変更
+- [x] オンボーディング保存 API — `POST /api/onboarding/submit` と `GET /api/onboarding/result` を追加し、ログイン済みユーザーの診断結果、学習目的、レベルを `user_profiles` に保存できるようにした
+- [x] 現在ユーザー API — `GET /api/auth/me` を追加し、セッションユーザー、プロフィール、設定値をまとめて返すようにした
+- [x] プロフィール画面 `/profile` — 認証付きの read-only 学習プロフィールとして、学習目的、レベル、学習履歴、実績、前回の診断結果を表示
+- [x] 設定画面 `/settings` — 認証付きの保存画面として、表示設定、通知設定、学習目標、プライバシー設定を server action で更新
+- [x] テーマ / エディタ設定の同期 — `rust-dojo-theme` と `rust-dojo-editor-font-size` を Cookie と DB に保存し、テーマ初期化と Monaco Editor の初期文字サイズへ反映
+- [x] 学習画面への DB 反映 — ダッシュボードと復習ページで `displayName` と `dailyMinutesGoal` を DB 優先で表示するように変更
+- [x] lint / build 検証パス (静的生成 54 ページ、`/profile` と `/settings` は動的ルート)
+
+### 追補修正: 管理画面の接続安定化
+- [x] `getAdminSnapshot()` の DB 集計を `Promise.all()` から単一の Prisma `$transaction` へ変更し、接続負荷を下げた
+- [x] `/admin` の劣化運転対応 — DB 集計に失敗しても教材一覧は表示し、運用指標エリアは警告表示に退避
+- [x] `/api/admin/analytics` の異常時レスポンスを整理 — 集計失敗時は `503` と警告付き snapshot を返すように変更
+- [x] lint / build 再検証パス (app routes 49 件)
+
 ### MVP: 管理画面最小構成バッチ
 - [x] 管理者ロールのセッション反映 — `AdminUser` を唯一の権限ソースにし、NextAuth の JWT / Session に `adminRole` を追加
 - [x] 共通 Header 更新 — 管理者ログイン時のみ「管理」ナビゲーションを表示

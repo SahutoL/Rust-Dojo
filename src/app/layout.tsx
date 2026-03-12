@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Noto_Sans_JP, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import { Providers } from "@/components/Providers";
+import { getThemeInitializationScript } from "@/lib/account-preferences";
 import "./globals.css";
 
 const inter = Inter({
@@ -54,10 +56,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" suppressHydrationWarning>
+    <html lang="ja" suppressHydrationWarning data-theme="dark">
       <body
         className={`${inter.variable} ${notoSansJP.variable} ${jetbrainsMono.variable} antialiased`}
       >
+        <Script id="theme-init" strategy="beforeInteractive">
+          {getThemeInitializationScript()}
+        </Script>
         <Providers>{children}</Providers>
       </body>
     </html>

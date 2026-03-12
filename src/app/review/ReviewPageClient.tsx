@@ -64,8 +64,10 @@ function FilterChip({
 
 export function ReviewPageClient({
   viewerName,
+  dailyMinutesGoal,
 }: {
   viewerName: string;
+  dailyMinutesGoal: number;
 }) {
   const [referenceNow] = useState(() => new Date());
   const [statusFilter, setStatusFilter] = useState<"all" | "available" | "scheduled">(
@@ -112,7 +114,7 @@ export function ReviewPageClient({
     <div className="max-w-5xl mx-auto px-4 py-10">
       <h1 className="text-2xl font-bold tracking-tight mb-1">復習</h1>
       <p className="text-sm text-[var(--text-secondary)] mb-8">
-        {viewerName} さん向けの復習キューです。優先度と期限を見ながら、戻るべき問題とレッスンを整理できます。
+        {viewerName} さん向けの復習キューです。1 日の目安は {dailyMinutesGoal} 分です。優先度と期限を見ながら、戻るべき問題とレッスンを整理できます。
       </p>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
