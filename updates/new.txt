@@ -2,6 +2,16 @@
 
 ## 2026-03-12
 
+### 学習データ永続化バッチ
+- [x] `Progress` の多態 FK を解消 — `entityType + entityId` の generic progress へ整理し、`generic_learning_progress` migration を追加
+- [x] 学習カタログ同期層 — `src/lib/learning-catalog.ts` と `src/lib/content-sync.ts` を追加し、静的 lesson / problem / testcase を DB 参照できる形へ同期
+- [x] DB-first 学習集計層 — `src/data/learningService.ts` を追加し、進捗、復習、推薦、提出履歴を Prisma から集計して `LearningSnapshot` を返すように変更
+- [x] 進捗 / 復習 / 推薦 API — `GET /api/learning/snapshot` `GET /api/review-queue` `GET /api/recommendations` を追加
+- [x] lesson / exercise の進捗保存 — レッスン閲覧・完了記録、演習閲覧記録、提出結果からの進捗更新と復習キュー更新を追加
+- [x] 提出永続化 — `POST /api/submit` でログイン済みユーザーの `submissions` / `submission_results` を保存し、AC / WA / CE / TLE / RE に応じて review queue と recommendations を更新
+- [x] 画面の DB-first 化 — `/dashboard` `/review` `/profile` を静的モックから DB 優先表示へ切り替え、空状態も追加
+- [x] lint / build 再検証パス (静的生成 57 ページ、学習 API 5 本を追加)
+
 ### 仕様レビュー追補: アカウント基盤
 - [x] オンボーディング質問項目の補完 — `1 日の学習時間`、`希望ペース`、`競プロ経験`、`OSS`、`就職・転職` を追加し、`spec.md` 10.2 の質問群へ寄せた
 - [x] オンボーディング保存の拡張 — `goal=oss/career` を `PrimaryGoal.OSS/CAREER` へ写像し、`daily_study_time` から `daily_minutes_goal` を更新するように変更

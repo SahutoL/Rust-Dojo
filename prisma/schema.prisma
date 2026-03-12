@@ -105,7 +105,6 @@ model Lesson {
   track    Track           @relation(fields: [trackId], references: [id], onDelete: Cascade)
   sections LessonSection[]
   tags     LessonTag[]
-  progress Progress[]
 
   @@map("lessons")
 }
@@ -186,7 +185,6 @@ model Problem {
   testCases   ProblemTestCase[]
   submissions Submission[]
   tags        ProblemTag[]
-  progress    Progress[]
 
   @@map("problems")
 }
@@ -288,9 +286,7 @@ model Progress {
   lastAccessedAt DateTime     @default(now()) @map("last_accessed_at")
   completedAt   DateTime?     @map("completed_at")
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lesson  Lesson?  @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  problem Problem? @relation(fields: [entityId], references: [id], onDelete: Cascade, map: "progress_problem_fk")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, entityType, entityId])
   @@map("progresses")

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Button, Card, Badge } from "@/components/ui";
 import { Header } from "@/components/Header";
@@ -66,6 +67,7 @@ function ProblemMetaSection({
 
 export default function ProblemPage() {
   const params = useParams();
+  const { status } = useSession();
   const problemId = params.problemId as string;
   const problem = problems.find((p) => p.id === problemId);
 
@@ -84,6 +86,20 @@ export default function ProblemPage() {
   } | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitResponse | null>(null);
   const [activeTab, setActiveTab] = useState<"problem" | "result">("problem");
+
+  useEffect(() => {
+    if (status !== "authenticated" || !problem) {
+      return;
+    }
+
+    void fetch(`/api/problems/${problem.id}/progress`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ progressState: "IN_PROGRESS" }),
+    }).catch(() => {});
+  }, [problem, status]);
 
   const handleRun = useCallback(async () => {
     if (!problem) return;
@@ -182,6 +198,11 @@ export default function ProblemPage() {
             <Badge variant={difficultyVariant[problem.difficulty]} size="sm">
               {difficultyLabel[problem.difficulty]}
             </Badge>
+            {status === "authenticated" && (
+              <span className="text-xs text-[var(--text-tertiary)]">
+                進捗は自動で記録されます
+              </span>
+            )}
           </div>
         </div>
       </div>

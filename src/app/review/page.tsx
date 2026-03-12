@@ -3,8 +3,7 @@ import { redirect } from "next/navigation";
 import { Header } from "@/components/Header";
 import { ReviewPageClient } from "./ReviewPageClient";
 import { auth } from "@/lib/auth";
-import { getAccountSnapshot } from "@/lib/account";
-import { learningSnapshot } from "@/data/learningSnapshot";
+import { getLearningSnapshotForUser } from "@/data/learningService";
 
 export const metadata: Metadata = {
   title: "復習",
@@ -21,18 +20,20 @@ export default async function ReviewPage() {
     redirect(buildLoginHref("/review"));
   }
 
-  const account = await getAccountSnapshot(session.user.id);
+  const snapshot = await getLearningSnapshotForUser(session.user.id);
+
+  if (!snapshot) {
+    redirect(buildLoginHref("/review"));
+  }
 
   return (
     <div className="min-h-screen">
       <Header />
       <ReviewPageClient
-        viewerName={
-          account?.displayName ?? session.user.name ?? learningSnapshot.user.displayName
-        }
-        dailyMinutesGoal={
-          account?.dailyMinutesGoal ?? learningSnapshot.user.dailyMinutesGoal
-        }
+        viewerName={snapshot.user.displayName}
+        dailyMinutesGoal={snapshot.user.dailyMinutesGoal}
+        reviewQueue={snapshot.reviewQueue}
+        generatedAt={snapshot.generatedAt}
       />
     </div>
   );

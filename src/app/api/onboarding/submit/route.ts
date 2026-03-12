@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { InputJsonValue } from "@prisma/client/runtime/client";
+import { syncRecommendationsForUser } from "@/data/learningService";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -54,6 +55,8 @@ export async function POST(request: NextRequest) {
         onboardingResult,
       },
     });
+
+    await syncRecommendationsForUser(session.user.id);
 
     return NextResponse.json({
       recommendedTrackCode: diagnosis.track,

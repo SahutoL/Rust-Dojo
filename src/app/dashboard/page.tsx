@@ -3,13 +3,12 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Badge, Button, Card } from "@/components/ui";
 import { Header } from "@/components/Header";
-import { getAccountSnapshot } from "@/lib/account";
 import {
-  learningSnapshot,
   recommendationTypeLabel,
   reviewReasonLabel,
   sortReviewQueue,
 } from "@/data/learningSnapshot";
+import { getLearningSnapshotForUser } from "@/data/learningService";
 import { auth } from "@/lib/auth";
 
 export const metadata: Metadata = {
@@ -66,15 +65,23 @@ export default async function DashboardPage() {
     redirect(buildLoginHref("/dashboard"));
   }
 
-  const account = await getAccountSnapshot(session.user.id);
+  const snapshot = await getLearningSnapshotForUser(session.user.id);
 
-  const { overview, trackProgress, recentLessons, recentSubmissions, weakTags, recommendations } =
-    learningSnapshot;
-  const reviewQueuePreview = sortReviewQueue(learningSnapshot.reviewQueue).slice(0, 3);
-  const viewerName =
-    account?.displayName ?? session.user.name ?? learningSnapshot.user.displayName;
-  const dailyMinutesGoal =
-    account?.dailyMinutesGoal ?? learningSnapshot.user.dailyMinutesGoal;
+  if (!snapshot) {
+    redirect(buildLoginHref("/dashboard"));
+  }
+
+  const {
+    overview,
+    trackProgress,
+    recentLessons,
+    recentSubmissions,
+    weakTags,
+    recommendations,
+  } = snapshot;
+  const reviewQueuePreview = sortReviewQueue(snapshot.reviewQueue).slice(0, 3);
+  const viewerName = snapshot.user.displayName;
+  const dailyMinutesGoal = snapshot.user.dailyMinutesGoal;
   const recentWaCount = recentSubmissions.filter((submission) => submission.status === "WA").length;
   const recentCeCount = recentSubmissions.filter((submission) => submission.status === "CE").length;
   const overviewStats: OverviewStat[] = [
@@ -142,14 +149,15 @@ export default async function DashboardPage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold">トラック進捗</h2>
             <p className="text-xs text-[var(--text-tertiary)]">
-              更新日時: {formatDateTime(learningSnapshot.generatedAt)}
+              更新日時: {formatDateTime(snapshot.generatedAt)}
             </p>
           </div>
           <div className="space-y-3">
             {trackProgress.map((track) => {
-              const lessonRate = Math.round(
-                (track.completedLessons / track.totalLessons) * 100
-              );
+              const lessonRate =
+                track.totalLessons === 0
+                  ? 0
+                  : Math.round((track.completedLessons / track.totalLessons) * 100);
               const problemRate =
                 track.totalProblems === 0
                   ? 0
@@ -214,6 +222,13 @@ export default async function DashboardPage() {
           <div>
             <h2 className="text-sm font-semibold mb-3">直近のレッスン</h2>
             <div className="space-y-2">
+              {recentLessons.length === 0 && (
+                <Card variant="bordered" padding="sm">
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    まだ記録済みのレッスンはありません。
+                  </p>
+                </Card>
+              )}
               {recentLessons.map((lesson) => (
                 <Link href={lesson.href} key={`${lesson.trackCode}-${lesson.lessonSlug}`}>
                   <Card variant="bordered" padding="sm" className="mb-2">
@@ -240,6 +255,13 @@ export default async function DashboardPage() {
           <div>
             <h2 className="text-sm font-semibold mb-3">直近の提出</h2>
             <div className="space-y-2">
+              {recentSubmissions.length === 0 && (
+                <Card variant="bordered" padding="sm">
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    まだ提出履歴はありません。
+                  </p>
+                </Card>
+              )}
               {recentSubmissions.map((submission) => (
                 <Link href={submission.href} key={submission.submissionId}>
                   <Card variant="bordered" padding="sm" className="mb-2">
@@ -284,6 +306,13 @@ export default async function DashboardPage() {
           <div>
             <h2 className="text-sm font-semibold mb-3">苦手タグ</h2>
             <div className="space-y-2">
+              {weakTags.length === 0 && (
+                <Card variant="bordered" padding="sm">
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    まだ苦手タグは集計されていません。
+                  </p>
+                </Card>
+              )}
               {weakTags.map((tag) => (
                 <Card key={tag.tag} variant="bordered" padding="sm">
                   <div className="flex items-center justify-between gap-4">
@@ -306,6 +335,13 @@ export default async function DashboardPage() {
         <div className="mb-10">
           <h2 className="text-sm font-semibold mb-3">推薦学習</h2>
           <div className="space-y-2">
+            {recommendations.length === 0 && (
+              <Card variant="bordered" padding="sm">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  いま出せる推薦学習はありません。
+                </p>
+              </Card>
+            )}
             {recommendations.map((recommendation) => (
               <Card key={recommendation.id} variant="bordered" padding="sm">
                 <div className="flex items-start justify-between gap-4">
@@ -341,6 +377,13 @@ export default async function DashboardPage() {
             </div>
           </div>
           <div className="space-y-2">
+            {reviewQueuePreview.length === 0 && (
+              <Card variant="bordered" padding="sm">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  いまは復習キューに項目がありません。
+                </p>
+              </Card>
+            )}
             {reviewQueuePreview.map((item) => (
               <Card key={item.id} variant="bordered" padding="sm">
                 <div className="flex items-center justify-between gap-4">

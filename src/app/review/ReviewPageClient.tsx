@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { Badge, Button, Card } from "@/components/ui";
 import {
-  learningSnapshot,
   reviewReasonLabel,
   sortReviewQueue,
   isReviewAvailable,
@@ -65,9 +64,13 @@ function FilterChip({
 export function ReviewPageClient({
   viewerName,
   dailyMinutesGoal,
+  reviewQueue,
+  generatedAt,
 }: {
   viewerName: string;
   dailyMinutesGoal: number;
+  reviewQueue: ReviewQueueItemSnapshot[];
+  generatedAt: string;
 }) {
   const [referenceNow] = useState(() => new Date());
   const [statusFilter, setStatusFilter] = useState<"all" | "available" | "scheduled">(
@@ -79,16 +82,16 @@ export function ReviewPageClient({
   const [sortMode, setSortMode] = useState<"priority" | "availableAt">("priority");
   const [conceptFilter, setConceptFilter] = useState("すべて");
 
-  const availableCount = learningSnapshot.reviewQueue.filter((item) =>
+  const availableCount = reviewQueue.filter((item) =>
     isReviewAvailable(item, referenceNow)
   ).length;
-  const scheduledCount = learningSnapshot.reviewQueue.length - availableCount;
+  const scheduledCount = reviewQueue.length - availableCount;
   const uniqueConceptLabels = Array.from(
-    new Set(learningSnapshot.reviewQueue.flatMap((item) => item.conceptLabels))
+    new Set(reviewQueue.flatMap((item) => item.conceptLabels))
   ).sort((left, right) => left.localeCompare(right, "ja"));
 
   const filteredItems = sortReviewQueue(
-    learningSnapshot.reviewQueue.filter((item) => {
+    reviewQueue.filter((item) => {
       const available = isReviewAvailable(item, referenceNow);
 
       if (statusFilter === "available" && !available) return false;
@@ -105,7 +108,7 @@ export function ReviewPageClient({
   );
 
   const topPriorityItem = sortReviewQueue(
-    learningSnapshot.reviewQueue,
+    reviewQueue,
     "priority",
     referenceNow
   )[0];
@@ -234,11 +237,18 @@ export function ReviewPageClient({
       <div className="flex items-center justify-between gap-4 mb-3">
         <h2 className="text-sm font-semibold">復習キュー</h2>
         <p className="text-xs text-[var(--text-tertiary)]">
-          更新日時: {formatDateTime(learningSnapshot.generatedAt)}
+          更新日時: {formatDateTime(generatedAt)}
         </p>
       </div>
 
       <div className="space-y-3">
+        {filteredItems.length === 0 && (
+          <Card variant="bordered" padding="md">
+            <p className="text-sm text-[var(--text-secondary)]">
+              条件に合う復習項目はありません。
+            </p>
+          </Card>
+        )}
         {filteredItems.map((item: ReviewQueueItemSnapshot) => {
           const available = isReviewAvailable(item, referenceNow);
 

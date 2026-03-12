@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeRustCode, injectStdin } from "@/lib/playground";
 import { getProblem } from "@/data/problems";
+import { auth } from "@/lib/auth";
+import { persistSubmissionForUser } from "@/data/learningService";
 
 export type SubmissionStatus = "AC" | "WA" | "CE" | "TLE" | "RE";
 
@@ -19,6 +21,14 @@ export interface SubmitResponse {
   results: TestCaseResult[];
   passedCount: number;
   totalCount: number;
+}
+
+interface PersistedTestCaseResult {
+  index: number;
+  status: SubmissionStatus;
+  actualOutput: string;
+  stderr: string;
+  isHidden: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -49,6 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     const results: TestCaseResult[] = [];
+    const persistedResults: PersistedTestCaseResult[] = [];
     let overallStatus: SubmissionStatus = "AC";
 
     for (let i = 0; i < problem.testCases.length; i++) {
@@ -82,6 +93,13 @@ export async function POST(request: NextRequest) {
         stderr: execResult.stderr,
         isHidden: tc.isHidden,
       });
+      persistedResults.push({
+        index: i,
+        status,
+        actualOutput: execResult.stdout,
+        stderr: execResult.stderr,
+        isHidden: tc.isHidden,
+      });
 
       // CE は全テストケースに影響するため即座に中断
       if (status === "CE") {
@@ -102,6 +120,23 @@ export async function POST(request: NextRequest) {
       passedCount,
       totalCount: problem.testCases.length,
     };
+
+    const session = await auth();
+
+    if (session?.user) {
+      try {
+        await persistSubmissionForUser(session.user.id, {
+          problemId: problem.id,
+          sourceCode: code,
+          overallStatus,
+          passedCount,
+          totalCount: problem.testCases.length,
+          results: persistedResults,
+        });
+      } catch (persistenceError) {
+        console.error("Submission persistence error:", persistenceError);
+      }
+    }
 
     return NextResponse.json(response);
   } catch (error) {

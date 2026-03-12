@@ -3,7 +3,12 @@ import { problems } from "@/data/problems";
 
 export type ProgressState = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
 export type SubmissionStatus = "AC" | "WA" | "CE" | "TLE" | "RE";
-export type RecommendationType = "NEXT_LESSON" | "REVIEW_CONCEPT" | "SOLVE_PROBLEM";
+export type RecommendationType =
+  | "NEXT_LESSON"
+  | "REVIEW_CONCEPT"
+  | "SOLVE_PROBLEM"
+  | "COMPETITIVE_SET"
+  | "PRACTICAL_TASK";
 export type ReviewReasonType =
   | "WRONG_ANSWER"
   | "COMPILE_ERROR"
@@ -14,8 +19,14 @@ export type ReviewReasonType =
 export interface DashboardUserSnapshot {
   id: string;
   displayName: string;
-  skillLevel: "BEGINNER" | "ELEMENTARY" | "INTERMEDIATE";
-  primaryGoal: "RUST_INTRO" | "ATCODER" | "RUST_PRACTICAL";
+  skillLevel: "BEGINNER" | "ELEMENTARY" | "INTERMEDIATE" | "ADVANCED";
+  primaryGoal:
+    | "PROGRAMMING_BASICS"
+    | "RUST_INTRO"
+    | "RUST_PRACTICAL"
+    | "ATCODER"
+    | "OSS"
+    | "CAREER";
   dailyMinutesGoal: number;
 }
 
@@ -119,6 +130,8 @@ export const recommendationTypeLabel: Record<RecommendationType, string> = {
   NEXT_LESSON: "次に進む",
   REVIEW_CONCEPT: "復習する",
   SOLVE_PROBLEM: "問題を解く",
+  COMPETITIVE_SET: "セットで解く",
+  PRACTICAL_TASK: "課題に進む",
 };
 
 const problemTotalsByTrack = problems.reduce<Record<string, number>>(

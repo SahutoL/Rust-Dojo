@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { tracks, getTrack, getLesson } from "@/data/lessons";
 import { Header } from "@/components/Header";
 import { LessonContent } from "./LessonContent";
+import { LessonProgressTracker } from "./LessonProgressTracker";
 import type { Metadata } from "next";
 
 type Params = Promise<{ trackSlug: string; lessonSlug: string }>;
@@ -72,6 +73,11 @@ export default async function LessonPage({
         <p className="text-xs text-[var(--text-tertiary)] mb-8">
           約 {lesson.estimatedMinutes} 分
         </p>
+
+        <LessonProgressTracker
+          trackCode={track.code}
+          lessonSlug={lesson.slug}
+        />
 
         {/* Lesson content */}
         <LessonContent content={lesson.content} />

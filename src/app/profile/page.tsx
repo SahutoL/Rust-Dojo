@@ -8,10 +8,8 @@ import {
   primaryGoalLabel,
   skillLevelLabel,
 } from "@/lib/account";
-import {
-  ProgressState,
-  prisma,
-} from "@/lib/prisma";
+import { getLearningSnapshotForUser } from "@/data/learningService";
+import { prisma, type ProgressState } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
 export const metadata: Metadata = {
@@ -73,39 +71,8 @@ export default async function ProfilePage() {
     redirect(buildLoginHref("/profile"));
   }
 
-  const [recentProgress, recentSubmissions, achievements] = await prisma.$transaction([
-    prisma.progress.findMany({
-      where: { userId: session.user.id },
-      orderBy: { lastAccessedAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        entityType: true,
-        entityId: true,
-        progressState: true,
-        lastAccessedAt: true,
-        lesson: {
-          select: { title: true },
-        },
-        problem: {
-          select: { title: true },
-        },
-      },
-    }),
-    prisma.submission.findMany({
-      where: { userId: session.user.id },
-      orderBy: { submittedAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        status: true,
-        submittedAt: true,
-        problemId: true,
-        problem: {
-          select: { title: true },
-        },
-      },
-    }),
+  const [snapshot, achievements] = await Promise.all([
+    getLearningSnapshotForUser(session.user.id),
     prisma.userAchievement.findMany({
       where: { userId: session.user.id },
       orderBy: { earnedAt: "desc" },
@@ -123,19 +90,23 @@ export default async function ProfilePage() {
       },
     }),
   ]);
+
+  if (!snapshot) {
+    redirect(buildLoginHref("/profile"));
+  }
+
   const recentActivities = [
-    ...recentProgress.map((progress) => ({
-      id: `progress-${progress.id}`,
-      title:
-        progress.lesson?.title ?? progress.problem?.title ?? progress.entityId,
-      timestamp: progress.lastAccessedAt,
-      metaLabel: progress.entityType === "LESSON" ? "レッスン" : "問題",
-      badgeLabel: progressStateLabel[progress.progressState],
-      badgeVariant: progressStateVariant[progress.progressState],
+    ...snapshot.recentLessons.map((lesson) => ({
+      id: `lesson-${lesson.trackCode}-${lesson.lessonSlug}`,
+      title: lesson.title,
+      timestamp: lesson.lastAccessedAt,
+      metaLabel: "レッスン",
+      badgeLabel: progressStateLabel[lesson.progressState],
+      badgeVariant: progressStateVariant[lesson.progressState],
     })),
-    ...recentSubmissions.map((submission) => ({
-      id: `submission-${submission.id}`,
-      title: submission.problem?.title ?? submission.problemId,
+    ...snapshot.recentSubmissions.map((submission) => ({
+      id: `submission-${submission.submissionId}`,
+      title: submission.title,
       timestamp: submission.submittedAt,
       metaLabel: "提出",
       badgeLabel: submission.status,
