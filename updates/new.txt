@@ -12,6 +12,10 @@
 - [x] README 更新 — 接続プールの optional env var を追記
 - [x] lint / build 再検証パス (app routes 61 件)
 
+### 追補修正: dev 環境の Tailwind 解決ずれ
+- [x] Turbopack / PostCSS の root を config ファイル基準の絶対パスへ固定し、`@import "tailwindcss"` が `/Users/renzou/Downloads` 側へ解決される問題を回避
+- [x] `globals.css` の Tailwind import を repo 内 `node_modules/tailwindcss/index.css` への相対 import に変更
+
 ## 2026-03-12
 
 ### 重大指摘解消バッチ
