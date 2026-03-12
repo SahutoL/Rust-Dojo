@@ -92,11 +92,15 @@ npm run dev
 
 ブラウザで [http://localhost:3000](http://localhost:3000) を開くと確認できます。
 
+`npm run dev` と `npm run build` は安定性を優先して Webpack を使います。Turbopack の比較検証が必要な場合だけ `npm run dev:turbo` / `npm run build:turbo` を使ってください。
+
 ## 開発コマンド
 
 ```bash
 npm run dev
+npm run dev:turbo
 npm run build
+npm run build:turbo
 npm run lint
 npm run admin:grant -- admin@example.com ADMIN
 npm run content:bootstrap

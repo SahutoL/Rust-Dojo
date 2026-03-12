@@ -16,6 +16,10 @@
 - [x] Turbopack / PostCSS の root を config ファイル基準の絶対パスへ固定し、`@import "tailwindcss"` が `/Users/renzou/Downloads` 側へ解決される問題を回避
 - [x] `globals.css` の Tailwind import を repo 内 `node_modules/tailwindcss/index.css` への相対 import に変更
 
+### 追補修正: 開発・ビルド既定を Webpack へ切り替え
+- [x] `npm run dev` と `npm run build` を `--webpack` 既定へ変更し、Next.js 16 の Turbopack で再発していた Tailwind CSS 解決不具合を回避
+- [x] `npm run dev:turbo` と `npm run build:turbo` を追加し、Turbopack 比較検証の導線は残した
+
 ## 2026-03-12
 
 ### 重大指摘解消バッチ
