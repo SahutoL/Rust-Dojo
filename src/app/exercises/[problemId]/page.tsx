@@ -9,7 +9,7 @@ import { Header } from "@/components/Header";
 import { problems } from "@/data/problems";
 import { getLesson, getTrack } from "@/data/lessons";
 import { LessonContent } from "@/app/learn/[trackSlug]/[lessonSlug]/LessonContent";
-import type { SubmitResponse, TestCaseResult } from "@/app/api/submit/route";
+import type { SubmitResponse, TestCaseResult } from "@/lib/problem-attempts";
 import { readEditorFontSizeFromCookieHeader } from "@/lib/account-preferences";
 import dynamic from "next/dynamic";
 
@@ -129,13 +129,11 @@ export default function ProblemPage() {
 
     try {
       // サンプルテストケースの最初の入力で実行
-      const sampleCase = problem.testCases.find((tc) => !tc.isHidden);
-      const res = await fetch("/api/execute", {
+      const res = await fetch(`/api/problems/${problem.id}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code,
-          stdin: sampleCase?.input ?? "",
         }),
       });
       const data = await res.json();
@@ -160,10 +158,10 @@ export default function ProblemPage() {
     setSubmitResult(null);
 
     try {
-      const res = await fetch("/api/submit", {
+      const res = await fetch(`/api/problems/${problem.id}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, problemId: problem.id }),
+        body: JSON.stringify({ code }),
       });
       const data: SubmitResponse = await res.json();
       setSubmitResult(data);

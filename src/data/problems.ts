@@ -978,10 +978,14 @@ export function getProblem(id: string): ProblemData | undefined {
 }
 
 export function getProblems(filters?: {
+  trackCode?: string;
   difficulty?: string;
   tag?: string;
 }): ProblemData[] {
   let result = problems;
+  if (filters?.trackCode) {
+    result = result.filter((problem) => problem.trackCode === filters.trackCode);
+  }
   if (filters?.difficulty) {
     result = result.filter((problem) => problem.difficulty === filters.difficulty);
   }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { executeRustCode, injectStdin } from "@/lib/playground";
+import { executeCode } from "@/lib/problem-attempts";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,9 +13,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // stdin がある場合はモックを注入
-    const execCode = stdin ? injectStdin(code, stdin) : code;
-    const result = await executeRustCode(execCode);
+    const result = await executeCode(code, stdin);
 
     return NextResponse.json(result);
   } catch (error) {

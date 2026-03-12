@@ -2,9 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { tracks, getTrack, getLesson } from "@/data/lessons";
 import { Header } from "@/components/Header";
-import { LessonContent } from "./LessonContent";
-import { LessonProgressTracker } from "./LessonProgressTracker";
 import type { Metadata } from "next";
+import {
+  extractLessonHeadings,
+  extractLessonSandboxCode,
+} from "@/lib/lesson-markdown";
+import { LessonReadingWorkspace } from "./LessonReadingWorkspace";
 
 type Params = Promise<{ trackSlug: string; lessonSlug: string }>;
 
@@ -45,11 +48,13 @@ export default async function LessonPage({
     currentIndex < track.lessons.length - 1
       ? track.lessons[currentIndex + 1]
       : null;
+  const headings = extractLessonHeadings(lesson.content);
+  const initialSandboxCode = extractLessonSandboxCode(lesson.content);
 
   return (
     <div className="min-h-screen">
       <Header />
-      <div className="max-w-3xl mx-auto px-4">
+      <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)] py-3 flex-wrap">
           <Link href="/learn" className="hover:text-[var(--text-secondary)] transition-colors">学ぶ</Link>
           <span>/</span>
@@ -59,7 +64,7 @@ export default async function LessonPage({
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-10">
+      <div className="max-w-7xl mx-auto px-4 py-10">
         {/* Lesson header */}
         <p className="text-xs text-[var(--text-tertiary)] font-mono mb-1">
           {track.name} · {currentIndex + 1} / {track.lessons.length}
@@ -74,13 +79,14 @@ export default async function LessonPage({
           約 {lesson.estimatedMinutes} 分
         </p>
 
-        <LessonProgressTracker
+        <LessonReadingWorkspace
+          key={`${track.code}/${lesson.slug}`}
           trackCode={track.code}
           lessonSlug={lesson.slug}
+          content={lesson.content}
+          headings={headings}
+          initialSandboxCode={initialSandboxCode}
         />
-
-        {/* Lesson content */}
-        <LessonContent content={lesson.content} />
 
         {/* Navigation */}
         <div className="mt-12 pt-6 border-t border-[var(--border-primary)] flex items-center justify-between">

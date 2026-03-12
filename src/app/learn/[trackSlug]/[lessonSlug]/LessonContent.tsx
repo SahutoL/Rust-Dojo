@@ -1,26 +1,62 @@
 "use client";
 
+import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { createLessonHeadingIdFactory } from "@/lib/lesson-markdown";
 
 interface LessonContentProps {
   content: string;
 }
 
+function flattenNodeText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(flattenNodeText).join("");
+  }
+
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    return flattenNodeText(node.props.children);
+  }
+
+  return "";
+}
+
 export function LessonContent({ content }: LessonContentProps) {
+  const nextHeadingId = createLessonHeadingIdFactory();
+
   return (
     <article className="lesson-content">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h2: ({ children }) => (
-            <h2 className="text-xl font-bold mt-10 mb-4 tracking-tight">
-              {children}
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-lg font-semibold mt-8 mb-3">{children}</h3>
-          ),
+          h2: ({ children }) => {
+            const id = nextHeadingId(flattenNodeText(children));
+            return (
+              <h2
+                id={id}
+                data-lesson-heading
+                className="text-xl font-bold mt-10 mb-4 tracking-tight scroll-mt-24"
+              >
+                {children}
+              </h2>
+            );
+          },
+          h3: ({ children }) => {
+            const id = nextHeadingId(flattenNodeText(children));
+            return (
+              <h3
+                id={id}
+                data-lesson-heading
+                className="text-lg font-semibold mt-8 mb-3 scroll-mt-24"
+              >
+                {children}
+              </h3>
+            );
+          },
           p: ({ children }) => (
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-4">
               {children}

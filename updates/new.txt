@@ -2,6 +2,14 @@
 
 ## 2026-03-12
 
+### 仕様レビュー追補: レッスン表示と API 準拠
+- [x] レッスン画面の表示要件を補強 — 見出しベースの目次 / 進捗表示、スクロール位置保存、モバイル縦積みレイアウト、実行エリアを追加
+- [x] レッスン完了導線の補強 — 完了記録を `POST /api/lessons/[trackSlug]/[lessonSlug]/complete` に分離し、見出し閲覧率と実行済み状態を満たした時だけ完了を記録するように変更
+- [x] 問題 API の補完 — `GET /api/problems/[problemId]` と spec 寄りの `POST /api/problems/[problemId]/run|submit` を追加し、演習詳細ページもそれらを利用するように変更
+- [x] 進捗 / 提出 API の補完 — `GET /api/progress/dashboard` `POST /api/review-queue/[id]/resolve` `GET /api/submissions/[submissionId]` `GET /api/submissions/[submissionId]/results` を追加
+- [x] コンテンツ読み出し API の補完 — `GET /api/tracks` `GET /api/lessons` `GET /api/lessons/[trackSlug]/[lessonSlug]` `POST /api/lessons/[trackSlug]/[lessonSlug]/complete` を追加
+- [x] lint / build 再検証パス (app routes 61 件)
+
 ### 進捗記録の接続安定化
 - [x] 閲覧時の recommendation 再生成を停止 — lesson / exercise の `IN_PROGRESS` 保存では progress upsert だけを行い、重い recommendation 同期を走らせないように変更
 - [x] recommendation 同期の best-effort 化 — lesson 完了、提出保存、オンボーディング保存、設定更新で同期に失敗しても主要処理を 500 にしないように変更

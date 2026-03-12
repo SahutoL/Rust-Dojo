@@ -9,15 +9,26 @@ const visitedLessonKeys = new Set<string>();
 export function LessonProgressTracker({
   trackCode,
   lessonSlug,
+  completedHeadingCount,
+  totalHeadingCount,
+  hasSuccessfulRun,
 }: {
   trackCode: string;
   lessonSlug: string;
+  completedHeadingCount: number;
+  totalHeadingCount: number;
+  hasSuccessfulRun: boolean;
 }) {
   const { status } = useSession();
   const lessonKey = `${trackCode}/${lessonSlug}`;
   const [hasRecordedVisit, setHasRecordedVisit] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const minimumHeadingCount =
+    totalHeadingCount === 0 ? 0 : Math.max(1, Math.ceil(totalHeadingCount * 0.8));
+  const hasEnoughReading =
+    totalHeadingCount === 0 || completedHeadingCount >= minimumHeadingCount;
+  const canComplete = hasRecordedVisit && hasEnoughReading && hasSuccessfulRun;
 
   useEffect(() => {
     if (
@@ -67,24 +78,26 @@ export function LessonProgressTracker({
       <Badge variant={isCompleted ? "success" : "info"} size="sm">
         {isCompleted ? "完了を記録済み" : hasRecordedVisit ? "閲覧を記録済み" : "学習を記録中"}
       </Badge>
+      <Badge variant={hasEnoughReading ? "success" : "default"} size="sm">
+        見出し {completedHeadingCount} / {totalHeadingCount}
+      </Badge>
+      <Badge variant={hasSuccessfulRun ? "success" : "default"} size="sm">
+        {hasSuccessfulRun ? "実行済み" : "実行待ち"}
+      </Badge>
       <Button
         type="button"
         size="sm"
         variant={isCompleted ? "ghost" : "primary"}
-        disabled={isCompleted}
+        disabled={isCompleted || !canComplete}
         isLoading={isCompleting}
         onClick={async () => {
           setIsCompleting(true);
 
           try {
             const response = await fetch(
-              `/api/lessons/${trackCode}/${lessonSlug}/progress`,
+              `/api/lessons/${trackCode}/${lessonSlug}/complete`,
               {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ progressState: "COMPLETED" }),
               }
             );
 
@@ -100,6 +113,11 @@ export function LessonProgressTracker({
       >
         {isCompleted ? "完了済み" : "完了として記録"}
       </Button>
+      {!canComplete && !isCompleted && (
+        <p className="text-xs text-[var(--text-tertiary)]">
+          見出しを一定量まで読み、実行エリアで 1 回動かすと完了を記録できます。
+        </p>
+      )}
     </div>
   );
 }
