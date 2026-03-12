@@ -1,8 +1,14 @@
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessAdmin } from "@/lib/admin";
 import { auth } from "@/lib/auth";
 import { createLessonContent } from "@/lib/admin-content";
+import {
+  CATALOG_LESSONS_TAG,
+  CATALOG_TRACKS_TAG,
+  getCatalogLessonTag,
+  getCatalogTrackTag,
+} from "@/data/catalog";
 
 function parseBoolean(value: unknown) {
   return value === true || value === "true";
@@ -49,6 +55,10 @@ export async function POST(request: NextRequest) {
     revalidatePath(`/learn/${lesson.track.code}`);
     revalidatePath(`/learn/${lesson.track.code}/${lesson.slug}`);
     revalidatePath("/admin");
+    revalidateTag(CATALOG_TRACKS_TAG, "max");
+    revalidateTag(CATALOG_LESSONS_TAG, "max");
+    revalidateTag(getCatalogTrackTag(lesson.track.code), "max");
+    revalidateTag(getCatalogLessonTag(lesson.track.code, lesson.slug), "max");
 
     return NextResponse.json({ ok: true, lessonId: lesson.id }, { status: 201 });
   } catch (error) {

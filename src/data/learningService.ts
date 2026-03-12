@@ -9,6 +9,7 @@ import {
   type SubmissionSnapshot,
   type SubmissionStatus,
 } from "@/data/learningSnapshot";
+import { getPublishedCatalogContextTracks } from "@/data/catalog";
 import { type AccountSnapshot, getAccountSnapshot } from "@/lib/account";
 import { buildProblemTestCaseId } from "@/lib/problem-testcase-id";
 import {
@@ -286,42 +287,7 @@ function buildStreakSummary(timestamps: Array<string | Date>) {
 }
 
 async function loadCatalogContext(): Promise<CatalogContext> {
-  const rows = await prisma.track.findMany({
-    orderBy: { sortOrder: "asc" },
-    include: {
-      lessons: {
-        where: { isPublished: true },
-        orderBy: { sortOrder: "asc" },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          estimatedMinutes: true,
-          sortOrder: true,
-        },
-      },
-      problems: {
-        where: { isPublished: true },
-        orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
-        include: {
-          tags: {
-            include: {
-              tag: true,
-            },
-          },
-          relatedLessons: {
-            include: {
-              lesson: {
-                include: {
-                  track: true,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
+  const rows = await getPublishedCatalogContextTracks();
 
   const lessonsById = new Map<string, CatalogLessonEntity>();
   const lessonsBySlug = new Map<string, CatalogLessonEntity>();
@@ -351,18 +317,6 @@ async function loadCatalogContext(): Promise<CatalogContext> {
     });
 
     const problems = track.problems.map((problem) => {
-      const relatedLessons = problem.relatedLessons.map((relation) => ({
-        id: relation.lesson.id,
-        slug: relation.lesson.slug,
-        title: relation.lesson.title,
-        estimatedMinutes: relation.lesson.estimatedMinutes,
-        trackCode: relation.lesson.track.code,
-        trackName: relation.lesson.track.name,
-        href: `/learn/${relation.lesson.track.code}/${relation.lesson.slug}`,
-        conceptLabels: [relation.lesson.title],
-        sortOrder: relation.lesson.sortOrder,
-      }));
-
       const entity = {
         id: problem.id,
         title: problem.title,
@@ -370,9 +324,9 @@ async function loadCatalogContext(): Promise<CatalogContext> {
         trackCode: track.code,
         trackName: track.name,
         href: `/exercises/${problem.id}`,
-        conceptLabels: problem.tags.map((tag) => tag.tag.name),
-        tags: problem.tags.map((tag) => tag.tag.name),
-        relatedLessons,
+        conceptLabels: problem.conceptLabels,
+        tags: problem.tags,
+        relatedLessons: problem.relatedLessons,
         sortOrder: problem.sortOrder,
       } satisfies CatalogProblemEntity;
 
@@ -956,38 +910,36 @@ async function getLessonProgressSummary(
   userId: string,
   lessonId: string
 ): Promise<LessonSectionProgressSummary> {
-  const [sections, rows, lessonProgress] = await prisma.$transaction([
-    prisma.lessonSection.findMany({
-      where: { lessonId },
-      orderBy: { sortOrder: "asc" },
-      select: {
-        id: true,
-        sectionType: true,
-        isRequired: true,
+  const sections = await prisma.lessonSection.findMany({
+    where: { lessonId },
+    orderBy: { sortOrder: "asc" },
+    select: {
+      id: true,
+      sectionType: true,
+      isRequired: true,
+    },
+  });
+  const rows = await prisma.lessonSectionProgress.findMany({
+    where: { userId, lessonId },
+    select: {
+      sectionId: true,
+      status: true,
+      payloadJson: true,
+      completedAt: true,
+    },
+  });
+  const lessonProgress = await prisma.progress.findUnique({
+    where: {
+      userId_entityType_entityId: {
+        userId,
+        entityType: EntityType.LESSON,
+        entityId: lessonId,
       },
-    }),
-    prisma.lessonSectionProgress.findMany({
-      where: { userId, lessonId },
-      select: {
-        sectionId: true,
-        status: true,
-        payloadJson: true,
-        completedAt: true,
-      },
-    }),
-    prisma.progress.findUnique({
-      where: {
-        userId_entityType_entityId: {
-          userId,
-          entityType: EntityType.LESSON,
-          entityId: lessonId,
-        },
-      },
-      select: {
-        progressState: true,
-      },
-    }),
-  ]);
+    },
+    select: {
+      progressState: true,
+    },
+  });
 
   const progressBySectionId = Object.fromEntries(
     rows.map((row) => [
@@ -1179,51 +1131,48 @@ async function loadRecommendationContext(userId: string) {
   }
 
   const catalog = await loadCatalogContext();
-  const [progressRows, reviewRows, recentSubmissionRows, problemStats] =
-    await prisma.$transaction([
-      prisma.progress.findMany({
-        where: { userId },
-        orderBy: { lastAccessedAt: "desc" },
-        select: {
-          entityType: true,
-          entityId: true,
-          progressState: true,
-          score: true,
-          lastAccessedAt: true,
-          completedAt: true,
-        },
-      }),
-      prisma.reviewQueueItem.findMany({
-        where: { userId, resolvedAt: null },
-        orderBy: [{ priority: "desc" }, { availableAt: "asc" }],
-        select: {
-          id: true,
-          sourceType: true,
-          sourceId: true,
-          reasonType: true,
-          priority: true,
-          availableAt: true,
-        },
-      }),
-      prisma.submission.findMany({
-        where: { userId },
-        orderBy: { submittedAt: "desc" },
-        take: 10,
-        select: {
-          status: true,
-          problemId: true,
-        },
-      }),
-      prisma.problemLearningStat.findMany({
-        where: { userId },
-        select: {
-          problemId: true,
-          ceCount: true,
-          waCount: true,
-          attemptCount: true,
-        },
-      }),
-    ]);
+  const progressRows = await prisma.progress.findMany({
+    where: { userId },
+    orderBy: { lastAccessedAt: "desc" },
+    select: {
+      entityType: true,
+      entityId: true,
+      progressState: true,
+      score: true,
+      lastAccessedAt: true,
+      completedAt: true,
+    },
+  });
+  const reviewRows = await prisma.reviewQueueItem.findMany({
+    where: { userId, resolvedAt: null },
+    orderBy: [{ priority: "desc" }, { availableAt: "asc" }],
+    select: {
+      id: true,
+      sourceType: true,
+      sourceId: true,
+      reasonType: true,
+      priority: true,
+      availableAt: true,
+    },
+  });
+  const recentSubmissionRows = await prisma.submission.findMany({
+    where: { userId },
+    orderBy: { submittedAt: "desc" },
+    take: 10,
+    select: {
+      status: true,
+      problemId: true,
+    },
+  });
+  const problemStats = await prisma.problemLearningStat.findMany({
+    where: { userId },
+    select: {
+      problemId: true,
+      ceCount: true,
+      waCount: true,
+      attemptCount: true,
+    },
+  });
 
   const reviewQueue = reviewRows
     .map((row) => buildReviewQueueSnapshot(row, catalog))
@@ -1582,56 +1531,53 @@ export async function getLearningSnapshotForUser(
   }
 
   const catalog = await loadCatalogContext();
-  const [progressRows, reviewRows, recommendationRows, submissionRows] =
-    await prisma.$transaction([
-      prisma.progress.findMany({
-        where: { userId },
-        orderBy: { lastAccessedAt: "desc" },
-        select: {
-          entityType: true,
-          entityId: true,
-          progressState: true,
-          score: true,
-          lastAccessedAt: true,
-          completedAt: true,
-        },
-      }),
-      prisma.reviewQueueItem.findMany({
-        where: { userId, resolvedAt: null },
-        orderBy: [{ priority: "desc" }, { availableAt: "asc" }],
-        select: {
-          id: true,
-          sourceType: true,
-          sourceId: true,
-          reasonType: true,
-          priority: true,
-          availableAt: true,
-        },
-      }),
-      prisma.recommendation.findMany({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          recommendationType: true,
-          targetType: true,
-          targetId: true,
-          reasonText: true,
-        },
-      }),
-      prisma.submission.findMany({
-        where: { userId },
-        orderBy: { submittedAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          problemId: true,
-          status: true,
-          submittedAt: true,
-        },
-      }),
-    ]);
+  const progressRows = await prisma.progress.findMany({
+    where: { userId },
+    orderBy: { lastAccessedAt: "desc" },
+    select: {
+      entityType: true,
+      entityId: true,
+      progressState: true,
+      score: true,
+      lastAccessedAt: true,
+      completedAt: true,
+    },
+  });
+  const reviewRows = await prisma.reviewQueueItem.findMany({
+    where: { userId, resolvedAt: null },
+    orderBy: [{ priority: "desc" }, { availableAt: "asc" }],
+    select: {
+      id: true,
+      sourceType: true,
+      sourceId: true,
+      reasonType: true,
+      priority: true,
+      availableAt: true,
+    },
+  });
+  const recommendationRows = await prisma.recommendation.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    select: {
+      id: true,
+      recommendationType: true,
+      targetType: true,
+      targetId: true,
+      reasonText: true,
+    },
+  });
+  const submissionRows = await prisma.submission.findMany({
+    where: { userId },
+    orderBy: { submittedAt: "desc" },
+    take: 5,
+    select: {
+      id: true,
+      problemId: true,
+      status: true,
+      submittedAt: true,
+    },
+  });
 
   const generatedAt = new Date();
   const lessonProgressRows = progressRows.filter(

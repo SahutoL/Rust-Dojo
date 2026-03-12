@@ -1,5 +1,17 @@
 # Rust Dojo — 完了タスクログ
 
+## 2026-03-13
+
+### DB 接続安定化バッチ
+- [x] Next.js の workspace root 明示 — `next.config.ts` に `turbopack.root` を追加し、複数 lockfile による root 推定警告を抑止
+- [x] Prisma 接続プールの安定化 — `pg.Pool` を global に保持し、`PG_POOL_MAX` `PG_POOL_CONNECTION_TIMEOUT_MS` `PG_POOL_IDLE_TIMEOUT_MS` で上書きできる設定を追加
+- [x] account / session 読み取りの軽量化 — `getSessionIdentityForUser()` と `getAccountSnapshot()` の read transaction を外し、`auth()` 経路の `P2028` を避ける逐次 read に変更
+- [x] 公開 catalog の cache 化 — track / lesson / problem の公開データを `unstable_cache` に載せ、`/` `/learn*` `/exercises*` `/dashboard` `/review` で共通利用する構成へ変更
+- [x] 学習スナップショット集計の逐次化 — dashboard / recommendation の read transaction を外し、user 依存データは fresh read、公開 catalog だけ cache を使う形へ整理
+- [x] admin 更新後の cache 無効化 — lesson / problem / testcase 更新 API に `revalidateTag()` を追加し、公開ページとダッシュボードへ即時反映されるように変更
+- [x] README 更新 — 接続プールの optional env var を追記
+- [x] lint / build 再検証パス (app routes 61 件)
+
 ## 2026-03-12
 
 ### 重大指摘解消バッチ

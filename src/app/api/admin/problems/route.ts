@@ -1,8 +1,14 @@
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessAdmin } from "@/lib/admin";
 import { createProblemContent } from "@/lib/admin-content";
 import { auth } from "@/lib/auth";
+import {
+  CATALOG_PROBLEMS_TAG,
+  CATALOG_TRACKS_TAG,
+  getCatalogProblemTag,
+  getCatalogTrackTag,
+} from "@/data/catalog";
 import { Difficulty, ProblemType } from "@/lib/prisma";
 
 function parseBoolean(value: unknown) {
@@ -85,6 +91,12 @@ export async function POST(request: NextRequest) {
     revalidatePath(`/exercises/${problem.id}`);
     revalidatePath("/dashboard");
     revalidatePath("/admin");
+    revalidateTag(CATALOG_TRACKS_TAG, "max");
+    revalidateTag(CATALOG_PROBLEMS_TAG, "max");
+    if (problem.trackCode) {
+      revalidateTag(getCatalogTrackTag(problem.trackCode), "max");
+    }
+    revalidateTag(getCatalogProblemTag(problem.id), "max");
 
     return NextResponse.json({ ok: true, problemId: problem.id }, { status: 201 });
   } catch (error) {

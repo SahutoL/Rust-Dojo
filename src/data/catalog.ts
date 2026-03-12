@@ -1,4 +1,27 @@
-import { prisma, type Difficulty, type ProblemType, type SectionType, type TrackAvailability } from "@/lib/prisma";
+import { unstable_cache } from "next/cache";
+import {
+  prisma,
+  type Difficulty,
+  type ProblemType,
+  type SectionType,
+  type TrackAvailability,
+} from "@/lib/prisma";
+
+export const CATALOG_TRACKS_TAG = "catalog:tracks";
+export const CATALOG_LESSONS_TAG = "catalog:lessons";
+export const CATALOG_PROBLEMS_TAG = "catalog:problems";
+
+export function getCatalogTrackTag(trackCode: string) {
+  return `catalog:track:${trackCode}`;
+}
+
+export function getCatalogLessonTag(trackCode: string, lessonSlug: string) {
+  return `catalog:lesson:${trackCode}:${lessonSlug}`;
+}
+
+export function getCatalogProblemTag(problemId: string) {
+  return `catalog:problem:${problemId}`;
+}
 
 export interface CatalogTrack {
   id: string;
@@ -80,6 +103,53 @@ export interface CatalogProblemDetail extends CatalogProblemSummary {
   }>;
 }
 
+export interface PublishedCatalogContextLesson {
+  id: string;
+  slug: string;
+  title: string;
+  estimatedMinutes: number;
+  trackCode: string;
+  trackName: string;
+  href: string;
+  conceptLabels: string[];
+  sortOrder: number;
+}
+
+export interface PublishedCatalogContextProblem {
+  id: string;
+  title: string;
+  estimatedMinutes: number;
+  trackCode: string;
+  trackName: string;
+  href: string;
+  conceptLabels: string[];
+  tags: string[];
+  relatedLessons: PublishedCatalogContextLesson[];
+  sortOrder: number;
+}
+
+export interface PublishedCatalogContextTrack {
+  id: string;
+  code: string;
+  name: string;
+  availability: TrackAvailability;
+  sortOrder: number;
+  lessons: PublishedCatalogContextLesson[];
+  problems: PublishedCatalogContextProblem[];
+}
+
+interface PublishedCatalogBaseData {
+  tracks: CatalogTrack[];
+  lessons: CatalogLessonSummary[];
+  problems: CatalogProblemSummary[];
+  lessonLookup: Array<{
+    id: string;
+    slug: string;
+    trackCode: string;
+  }>;
+  contextTracks: PublishedCatalogContextTrack[];
+}
+
 function mapTrackAvailability(value: TrackAvailability) {
   return value === "COMING_SOON" ? "coming_soon" : "available";
 }
@@ -158,6 +228,375 @@ function toTrack(row: {
   };
 }
 
+function toLessonDetail(row: {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  estimatedMinutes: number;
+  content: string | null;
+  track: {
+    id: string;
+    code: string;
+    label: string | null;
+    name: string;
+    description: string | null;
+    gradient: string | null;
+    availability: TrackAvailability;
+    roadmapTopicsJson: unknown;
+    launchNote: string | null;
+  };
+  sections: Array<{
+    id: string;
+    sectionType: SectionType;
+    isRequired: boolean;
+    title: string | null;
+    content: string;
+    payloadJson: unknown;
+    sortOrder: number;
+  }>;
+}): CatalogLessonDetail {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    summary: row.summary ?? "",
+    estimatedMinutes: row.estimatedMinutes,
+    content: row.content ?? "",
+    track: {
+      id: row.track.id,
+      code: row.track.code,
+      label: row.track.label ?? row.track.code.toUpperCase(),
+      name: row.track.name,
+      description: row.track.description ?? "",
+      gradient: row.track.gradient ?? "from-stone-600 to-stone-700",
+      availability: mapTrackAvailability(row.track.availability),
+      roadmapTopics: parseRoadmapTopics(row.track.roadmapTopicsJson),
+      launchNote: row.track.launchNote ?? undefined,
+    },
+    sections: row.sections.map((section) => ({
+      id: section.id,
+      sectionType: section.sectionType,
+      isRequired: section.isRequired,
+      title: section.title,
+      content: section.content,
+      payloadJson: section.payloadJson,
+      sortOrder: section.sortOrder,
+    })),
+  };
+}
+
+function toProblemDetail(row: {
+  id: string;
+  title: string;
+  statement: string;
+  difficulty: Difficulty;
+  estimatedMinutes: number;
+  constraintsText: string | null;
+  inputFormat: string | null;
+  outputFormat: string | null;
+  solutionOutline: string | null;
+  hintText: string | null;
+  explanationText: string | null;
+  initialCode: string | null;
+  type: ProblemType;
+  track: {
+    code: string;
+    name: string;
+    label: string | null;
+  } | null;
+  tags: Array<{
+    tag: {
+      name: string;
+    };
+  }>;
+  relatedLessons: Array<{
+    lesson: {
+      id: string;
+      slug: string;
+      title: string;
+      estimatedMinutes: number;
+      track: {
+        code: string;
+        name: string;
+      };
+    };
+  }>;
+  testCases: Array<{
+    id: string;
+    inputText: string;
+    expectedOutputText: string;
+    caseType: string;
+    timeLimitMs: number;
+    memoryLimitKb: number;
+    score: number;
+  }>;
+}): CatalogProblemDetail {
+  return {
+    id: row.id,
+    title: row.title,
+    difficulty: mapDifficulty(row.difficulty),
+    tags: row.tags.map((tag) => tag.tag.name),
+    trackCode: row.track?.code ?? "track0",
+    trackName: row.track?.name ?? "学習トラック",
+    trackLabel: row.track?.label ?? undefined,
+    relatedLessonSlugs: row.relatedLessons.map((relation) => relation.lesson.slug),
+    kind: mapProblemType(row.type),
+    estimatedMinutes: row.estimatedMinutes,
+    statement: row.statement,
+    constraintsText: row.constraintsText ?? undefined,
+    inputFormat: row.inputFormat ?? undefined,
+    outputFormat: row.outputFormat ?? undefined,
+    solutionOutline: row.solutionOutline ?? undefined,
+    hintText: row.hintText ?? undefined,
+    explanationText: row.explanationText ?? undefined,
+    initialCode: row.initialCode ?? "",
+    relatedLessons: row.relatedLessons.map((relation) => ({
+      id: relation.lesson.id,
+      slug: relation.lesson.slug,
+      title: relation.lesson.title,
+      estimatedMinutes: relation.lesson.estimatedMinutes,
+      trackCode: relation.lesson.track.code,
+      trackName: relation.lesson.track.name,
+    })),
+    testCases: row.testCases.map((testCase) => ({
+      id: testCase.id,
+      input: testCase.inputText,
+      expectedOutput: testCase.expectedOutputText,
+      isHidden: testCase.caseType === "HIDDEN",
+      timeLimitMs: testCase.timeLimitMs,
+      memoryLimitKb: testCase.memoryLimitKb,
+      score: testCase.score,
+    })),
+  };
+}
+
+async function fetchPublishedCatalogBaseData(): Promise<PublishedCatalogBaseData> {
+  const rows = await prisma.track.findMany({
+    orderBy: { sortOrder: "asc" },
+    include: {
+      lessons: {
+        where: { isPublished: true },
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          summary: true,
+          estimatedMinutes: true,
+          sortOrder: true,
+        },
+      },
+      problems: {
+        where: { isPublished: true },
+        orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+        include: {
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+          relatedLessons: {
+            include: {
+              lesson: {
+                include: {
+                  track: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const tracks: CatalogTrack[] = [];
+  const lessons: CatalogLessonSummary[] = [];
+  const problems: CatalogProblemSummary[] = [];
+  const lessonLookup: PublishedCatalogBaseData["lessonLookup"] = [];
+  const contextTracks: PublishedCatalogContextTrack[] = [];
+
+  for (const track of rows) {
+    tracks.push(toTrack(track));
+
+    const contextLessons = track.lessons.map((lesson) => {
+      const summary = toLessonSummary({
+        id: lesson.id,
+        slug: lesson.slug,
+        title: lesson.title,
+        summary: lesson.summary,
+        estimatedMinutes: lesson.estimatedMinutes,
+        track: {
+          code: track.code,
+          name: track.name,
+        },
+      });
+
+      lessons.push(summary);
+      lessonLookup.push({
+        id: lesson.id,
+        slug: lesson.slug,
+        trackCode: track.code,
+      });
+
+      return {
+        id: lesson.id,
+        slug: lesson.slug,
+        title: lesson.title,
+        estimatedMinutes: lesson.estimatedMinutes,
+        trackCode: track.code,
+        trackName: track.name,
+        href: `/learn/${track.code}/${lesson.slug}`,
+        conceptLabels: [lesson.title],
+        sortOrder: lesson.sortOrder,
+      } satisfies PublishedCatalogContextLesson;
+    });
+
+    const contextProblems = track.problems.map((problem) => {
+      const relatedLessons = problem.relatedLessons.map((relation) => ({
+        id: relation.lesson.id,
+        slug: relation.lesson.slug,
+        title: relation.lesson.title,
+        estimatedMinutes: relation.lesson.estimatedMinutes,
+        trackCode: relation.lesson.track.code,
+        trackName: relation.lesson.track.name,
+        href: `/learn/${relation.lesson.track.code}/${relation.lesson.slug}`,
+        conceptLabels: [relation.lesson.title],
+        sortOrder: relation.lesson.sortOrder,
+      }));
+
+      problems.push({
+        id: problem.id,
+        title: problem.title,
+        difficulty: mapDifficulty(problem.difficulty),
+        tags: problem.tags.map((tag) => tag.tag.name),
+        trackCode: track.code,
+        trackName: track.name,
+        relatedLessonSlugs: relatedLessons.map((lesson) => lesson.slug),
+        kind: mapProblemType(problem.type),
+        estimatedMinutes: problem.estimatedMinutes,
+      });
+
+      return {
+        id: problem.id,
+        title: problem.title,
+        estimatedMinutes: problem.estimatedMinutes,
+        trackCode: track.code,
+        trackName: track.name,
+        href: `/exercises/${problem.id}`,
+        conceptLabels: problem.tags.map((tag) => tag.tag.name),
+        tags: problem.tags.map((tag) => tag.tag.name),
+        relatedLessons,
+        sortOrder: problem.sortOrder,
+      } satisfies PublishedCatalogContextProblem;
+    });
+
+    contextTracks.push({
+      id: track.id,
+      code: track.code,
+      name: track.name,
+      availability: track.availability,
+      sortOrder: track.sortOrder,
+      lessons: contextLessons,
+      problems: contextProblems,
+    });
+  }
+
+  return {
+    tracks,
+    lessons,
+    problems,
+    lessonLookup,
+    contextTracks,
+  };
+}
+
+const getCachedPublishedCatalogBaseData = unstable_cache(
+  fetchPublishedCatalogBaseData,
+  ["catalog-base"],
+  {
+    tags: [CATALOG_TRACKS_TAG, CATALOG_LESSONS_TAG, CATALOG_PROBLEMS_TAG],
+  }
+);
+
+async function fetchPublishedLessonDetail(
+  trackCode: string,
+  lessonSlug: string
+): Promise<CatalogLessonDetail | null> {
+  const row = await prisma.lesson.findFirst({
+    where: {
+      slug: lessonSlug,
+      isPublished: true,
+      track: { code: trackCode },
+    },
+    include: {
+      track: true,
+      sections: {
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+  });
+
+  return row ? toLessonDetail(row) : null;
+}
+
+function getCachedPublishedLessonDetail(trackCode: string, lessonSlug: string) {
+  return unstable_cache(
+    () => fetchPublishedLessonDetail(trackCode, lessonSlug),
+    ["catalog-lesson-detail", trackCode, lessonSlug],
+    {
+      tags: [
+        CATALOG_LESSONS_TAG,
+        getCatalogTrackTag(trackCode),
+        getCatalogLessonTag(trackCode, lessonSlug),
+      ],
+    }
+  )();
+}
+
+async function fetchPublishedProblemDetail(
+  problemId: string
+): Promise<CatalogProblemDetail | null> {
+  const row = await prisma.problem.findFirst({
+    where: {
+      id: problemId,
+      isPublished: true,
+    },
+    include: {
+      track: true,
+      tags: {
+        include: {
+          tag: true,
+        },
+      },
+      relatedLessons: {
+        include: {
+          lesson: {
+            include: {
+              track: true,
+            },
+          },
+        },
+      },
+      testCases: {
+        orderBy: { id: "asc" },
+      },
+    },
+  });
+
+  return row ? toProblemDetail(row) : null;
+}
+
+function getCachedPublishedProblemDetail(problemId: string) {
+  return unstable_cache(
+    () => fetchPublishedProblemDetail(problemId),
+    ["catalog-problem-detail", problemId],
+    {
+      tags: [CATALOG_PROBLEMS_TAG, getCatalogProblemTag(problemId)],
+    }
+  )();
+}
+
 export function getTrackDisplayName(track: Pick<CatalogTrack, "label" | "name">) {
   return `${track.label} — ${track.name}`;
 }
@@ -176,25 +615,14 @@ export function getTrackVolumeLabel(
   return `公開 ${track.lessons.length} / ${track.roadmapTopics.length} テーマ`;
 }
 
-export async function getCatalogTracks() {
-  const rows = await prisma.track.findMany({
-    orderBy: { sortOrder: "asc" },
-    include: {
-      lessons: {
-        where: { isPublished: true },
-        orderBy: { sortOrder: "asc" },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          summary: true,
-          estimatedMinutes: true,
-        },
-      },
-    },
-  });
+export async function getPublishedCatalogContextTracks() {
+  const baseData = await getCachedPublishedCatalogBaseData();
+  return baseData.contextTracks;
+}
 
-  return rows.map(toTrack);
+export async function getCatalogTracks() {
+  const baseData = await getCachedPublishedCatalogBaseData();
+  return baseData.tracks;
 }
 
 export async function getCatalogLessons(filters?: {
@@ -202,6 +630,13 @@ export async function getCatalogLessons(filters?: {
   q?: string;
   includeUnpublished?: boolean;
 }) {
+  if (!filters?.q && !filters?.includeUnpublished) {
+    const baseData = await getCachedPublishedCatalogBaseData();
+    return filters?.trackCode
+      ? baseData.lessons.filter((lesson) => lesson.trackCode === filters.trackCode)
+      : baseData.lessons;
+  }
+
   const rows = await prisma.lesson.findMany({
     where: {
       ...(filters?.includeUnpublished ? {} : { isPublished: true }),
@@ -240,24 +675,8 @@ export async function getCatalogLessons(filters?: {
 }
 
 export async function getCatalogTrackByCode(trackCode: string) {
-  const row = await prisma.track.findUnique({
-    where: { code: trackCode },
-    include: {
-      lessons: {
-        where: { isPublished: true },
-        orderBy: { sortOrder: "asc" },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          summary: true,
-          estimatedMinutes: true,
-        },
-      },
-    },
-  });
-
-  return row ? toTrack(row) : null;
+  const baseData = await getCachedPublishedCatalogBaseData();
+  return baseData.tracks.find((track) => track.code === trackCode) ?? null;
 }
 
 export async function getCatalogTrackBySlug(trackCode: string) {
@@ -268,89 +687,29 @@ export async function getCatalogLessonByTrackAndSlug(
   trackCode: string,
   lessonSlug: string
 ) {
-  const row = await prisma.lesson.findFirst({
-    where: {
-      slug: lessonSlug,
-      track: { code: trackCode },
-    },
-    include: {
-      track: true,
-      sections: {
-        orderBy: { sortOrder: "asc" },
-      },
-    },
-  });
-
-  if (!row) {
-    return null;
-  }
-
-  return {
-    id: row.id,
-    slug: row.slug,
-    title: row.title,
-    summary: row.summary ?? "",
-    estimatedMinutes: row.estimatedMinutes,
-    content: row.content ?? "",
-    track: {
-      id: row.track.id,
-      code: row.track.code,
-      label: row.track.label ?? row.track.code.toUpperCase(),
-      name: row.track.name,
-      description: row.track.description ?? "",
-      gradient: row.track.gradient ?? "from-stone-600 to-stone-700",
-      availability: mapTrackAvailability(row.track.availability),
-      roadmapTopics: parseRoadmapTopics(row.track.roadmapTopicsJson),
-      launchNote: row.track.launchNote ?? undefined,
-    },
-    sections: row.sections.map((section) => ({
-      id: section.id,
-      sectionType: section.sectionType,
-      isRequired: section.isRequired,
-      title: section.title,
-      content: section.content,
-      payloadJson: section.payloadJson,
-      sortOrder: section.sortOrder,
-    })),
-  } satisfies CatalogLessonDetail;
+  return getCachedPublishedLessonDetail(trackCode, lessonSlug);
 }
 
 export async function getCatalogLessonBySlug(lessonSlug: string) {
-  const row = await prisma.lesson.findUnique({
-    where: { slug: lessonSlug },
-    include: {
-      track: true,
-      sections: {
-        orderBy: { sortOrder: "asc" },
-      },
-    },
-  });
+  const baseData = await getCachedPublishedCatalogBaseData();
+  const match = baseData.lessonLookup.find((lesson) => lesson.slug === lessonSlug);
 
-  if (!row) {
+  if (!match) {
     return null;
   }
 
-  return getCatalogLessonByTrackAndSlug(row.track.code, lessonSlug);
+  return getCachedPublishedLessonDetail(match.trackCode, lessonSlug);
 }
 
 export async function getCatalogLessonById(lessonId: string) {
-  const row = await prisma.lesson.findUnique({
-    where: { id: lessonId },
-    select: {
-      slug: true,
-      track: {
-        select: {
-          code: true,
-        },
-      },
-    },
-  });
+  const baseData = await getCachedPublishedCatalogBaseData();
+  const match = baseData.lessonLookup.find((lesson) => lesson.id === lessonId);
 
-  if (!row) {
+  if (!match) {
     return null;
   }
 
-  return getCatalogLessonByTrackAndSlug(row.track.code, row.slug);
+  return getCachedPublishedLessonDetail(match.trackCode, match.slug);
 }
 
 export async function getCatalogProblems(filters?: {
@@ -360,6 +719,18 @@ export async function getCatalogProblems(filters?: {
   q?: string;
   includeUnpublished?: boolean;
 }) {
+  if (
+    !filters?.includeUnpublished &&
+    !filters?.difficulty &&
+    !filters?.tag &&
+    !filters?.q
+  ) {
+    const baseData = await getCachedPublishedCatalogBaseData();
+    return filters?.trackCode
+      ? baseData.problems.filter((problem) => problem.trackCode === filters.trackCode)
+      : baseData.problems;
+  }
+
   const rows = await prisma.problem.findMany({
     where: {
       ...(filters?.includeUnpublished ? {} : { isPublished: true }),
@@ -373,7 +744,15 @@ export async function getCatalogProblems(filters?: {
             OR: [
               { title: { contains: filters.q, mode: "insensitive" } },
               { statement: { contains: filters.q, mode: "insensitive" } },
-              { tags: { some: { tag: { name: { contains: filters.q, mode: "insensitive" } } } } },
+              {
+                tags: {
+                  some: {
+                    tag: {
+                      name: { contains: filters.q, mode: "insensitive" },
+                    },
+                  },
+                },
+              },
             ],
           }
         : {}),
@@ -412,69 +791,5 @@ export async function getCatalogProblems(filters?: {
 }
 
 export async function getCatalogProblemById(problemId: string) {
-  const row = await prisma.problem.findUnique({
-    where: { id: problemId },
-    include: {
-      track: true,
-      tags: {
-        include: {
-          tag: true,
-        },
-      },
-      relatedLessons: {
-        include: {
-          lesson: {
-            include: {
-              track: true,
-            },
-          },
-        },
-      },
-      testCases: {
-        orderBy: { id: "asc" },
-      },
-    },
-  });
-
-  if (!row) {
-    return null;
-  }
-
-  return {
-    id: row.id,
-    title: row.title,
-    difficulty: mapDifficulty(row.difficulty),
-    tags: row.tags.map((tag) => tag.tag.name),
-    trackCode: row.track?.code ?? "track0",
-    trackName: row.track?.name ?? "学習トラック",
-    trackLabel: row.track?.label ?? undefined,
-    relatedLessonSlugs: row.relatedLessons.map((relation) => relation.lesson.slug),
-    kind: mapProblemType(row.type),
-    estimatedMinutes: row.estimatedMinutes,
-    statement: row.statement,
-    constraintsText: row.constraintsText ?? undefined,
-    inputFormat: row.inputFormat ?? undefined,
-    outputFormat: row.outputFormat ?? undefined,
-    solutionOutline: row.solutionOutline ?? undefined,
-    hintText: row.hintText ?? undefined,
-    explanationText: row.explanationText ?? undefined,
-    initialCode: row.initialCode ?? "",
-    relatedLessons: row.relatedLessons.map((relation) => ({
-      id: relation.lesson.id,
-      slug: relation.lesson.slug,
-      title: relation.lesson.title,
-      estimatedMinutes: relation.lesson.estimatedMinutes,
-      trackCode: relation.lesson.track.code,
-      trackName: relation.lesson.track.name,
-    })),
-    testCases: row.testCases.map((testCase) => ({
-      id: testCase.id,
-      input: testCase.inputText,
-      expectedOutput: testCase.expectedOutputText,
-      isHidden: testCase.caseType === "HIDDEN",
-      timeLimitMs: testCase.timeLimitMs,
-      memoryLimitKb: testCase.memoryLimitKb,
-      score: testCase.score,
-    })),
-  } satisfies CatalogProblemDetail;
+  return getCachedPublishedProblemDetail(problemId);
 }

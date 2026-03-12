@@ -377,8 +377,7 @@ export async function createProblemContent(
     select: { id: true },
   });
 
-  await updateProblemContent(actorId, problem.id, payload);
-  return problem;
+  return updateProblemContent(actorId, problem.id, payload);
 }
 
 export async function updateProblemContent(
@@ -437,6 +436,11 @@ export async function updateProblemContent(
     },
     select: {
       id: true,
+      track: {
+        select: {
+          code: true,
+        },
+      },
     },
   });
 
@@ -488,9 +492,13 @@ export async function updateProblemContent(
 
   await writeAuditLog(actorId, "problem.update", "PROBLEM", updated.id, {
     problemId: updated.id,
+    trackCode: updated.track?.code ?? payload.trackCode ?? null,
   });
 
-  return updated;
+  return {
+    ...updated,
+    trackCode: updated.track?.code ?? null,
+  };
 }
 
 export async function createProblemTestcase(

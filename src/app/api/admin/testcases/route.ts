@@ -1,8 +1,12 @@
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessAdmin } from "@/lib/admin";
 import { createProblemTestcase } from "@/lib/admin-content";
 import { auth } from "@/lib/auth";
+import {
+  CATALOG_PROBLEMS_TAG,
+  getCatalogProblemTag,
+} from "@/data/catalog";
 import { CaseType } from "@/lib/prisma";
 
 function parseCaseType(value: unknown) {
@@ -35,6 +39,8 @@ export async function POST(request: NextRequest) {
     revalidatePath("/exercises");
     revalidatePath(`/exercises/${testcase.problemId}`);
     revalidatePath("/admin");
+    revalidateTag(CATALOG_PROBLEMS_TAG, "max");
+    revalidateTag(getCatalogProblemTag(testcase.problemId), "max");
 
     return NextResponse.json({ ok: true, testcaseId: testcase.id }, { status: 201 });
   } catch (error) {

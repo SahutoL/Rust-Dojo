@@ -53,25 +53,24 @@ export async function getSessionIdentityForUser(userId: string): Promise<{
   displayName: string;
   adminRole: SessionAdminRole | null;
 } | null> {
-  const [user, adminUser] = await prisma.$transaction([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        email: true,
-        profile: {
-          select: { displayName: true },
-        },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      email: true,
+      profile: {
+        select: { displayName: true },
       },
-    }),
-    prisma.adminUser.findUnique({
-      where: { userId },
-      select: { role: true },
-    }),
-  ]);
+    },
+  });
 
   if (!user) {
     return null;
   }
+
+  const adminUser = await prisma.adminUser.findUnique({
+    where: { userId },
+    select: { role: true },
+  });
 
   return {
     displayName: buildDisplayName(user.email, user.profile?.displayName),
@@ -82,34 +81,33 @@ export async function getSessionIdentityForUser(userId: string): Promise<{
 export async function getAccountSnapshot(
   userId: string
 ): Promise<AccountSnapshot | null> {
-  const [user, adminUser] = await prisma.$transaction([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        status: true,
-        profile: {
-          select: {
-            displayName: true,
-            skillLevel: true,
-            primaryGoal: true,
-            dailyMinutesGoal: true,
-            onboardingResult: true,
-            preferencesJson: true,
-          },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      profile: {
+        select: {
+          displayName: true,
+          skillLevel: true,
+          primaryGoal: true,
+          dailyMinutesGoal: true,
+          onboardingResult: true,
+          preferencesJson: true,
         },
       },
-    }),
-    prisma.adminUser.findUnique({
-      where: { userId },
-      select: { role: true },
-    }),
-  ]);
+    },
+  });
 
   if (!user) {
     return null;
   }
+
+  const adminUser = await prisma.adminUser.findUnique({
+    where: { userId },
+    select: { role: true },
+  });
 
   return {
     userId: user.id,

@@ -62,12 +62,18 @@ DATABASE_URL="prisma+postgres://..."
 DIRECT_DATABASE_URL="postgres://..."
 AUTH_SECRET="your-secret"
 AUTH_URL="http://localhost:3000"
+PG_POOL_MAX="8"
+PG_POOL_CONNECTION_TIMEOUT_MS="3000"
+PG_POOL_IDLE_TIMEOUT_MS="30000"
 ```
 
 - `DATABASE_URL`: Prisma CLI 用
 - `DIRECT_DATABASE_URL`: アプリケーション実行時の接続用
 - `AUTH_SECRET`: NextAuth の署名鍵
 - `AUTH_URL`: ローカル開発時は `http://localhost:3000`
+- `PG_POOL_MAX`: PostgreSQL 接続プール上限。未指定時は development で `8`、production で `12`
+- `PG_POOL_CONNECTION_TIMEOUT_MS`: 接続待ちタイムアウト。未指定時は `3000`
+- `PG_POOL_IDLE_TIMEOUT_MS`: アイドル接続の保持時間。未指定時は `30000`
 
 ### 3. データベースを起動してスキーマを反映
 
