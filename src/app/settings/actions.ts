@@ -4,7 +4,7 @@ import type { InputJsonValue } from "@prisma/client/runtime/client";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { syncRecommendationsForUser } from "@/data/learningService";
+import { syncRecommendationsForUserSafely } from "@/data/learningService";
 import {
   DEFAULT_ACCOUNT_PREFERENCES,
   EDITOR_FONT_SIZE_COOKIE_NAME,
@@ -95,7 +95,7 @@ export async function saveSettingsAction(formData: FormData) {
     },
   });
 
-  await syncRecommendationsForUser(session.user.id);
+  await syncRecommendationsForUserSafely(session.user.id, "settings update");
 
   const cookieStore = await cookies();
   cookieStore.set(THEME_COOKIE_NAME, preferences.theme, {

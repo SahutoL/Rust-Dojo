@@ -640,6 +640,17 @@ export async function syncRecommendationsForUser(userId: string) {
   });
 }
 
+export async function syncRecommendationsForUserSafely(
+  userId: string,
+  context: string
+) {
+  try {
+    await syncRecommendationsForUser(userId);
+  } catch (error) {
+    console.error(`Recommendation sync skipped (${context}):`, error);
+  }
+}
+
 export async function recordLessonProgress(
   userId: string,
   trackCode: string,
@@ -665,9 +676,9 @@ export async function recordLessonProgress(
       priority: 45,
       availableAt,
     });
-  }
 
-  await syncRecommendationsForUser(userId);
+    await syncRecommendationsForUserSafely(userId, "lesson completion");
+  }
 }
 
 export async function recordProblemProgress(
@@ -699,9 +710,9 @@ export async function recordProblemProgress(
       priority: 40,
       availableAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
-  }
 
-  await syncRecommendationsForUser(userId);
+    await syncRecommendationsForUserSafely(userId, "problem completion");
+  }
 }
 
 export async function persistSubmissionForUser(
@@ -784,7 +795,7 @@ export async function persistSubmissionForUser(
     });
   }
 
-  await syncRecommendationsForUser(userId);
+  await syncRecommendationsForUserSafely(userId, "submission persistence");
 }
 
 export async function getLearningSnapshotForUser(

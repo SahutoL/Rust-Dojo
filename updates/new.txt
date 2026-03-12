@@ -2,6 +2,12 @@
 
 ## 2026-03-12
 
+### 進捗記録の接続安定化
+- [x] 閲覧時の recommendation 再生成を停止 — lesson / exercise の `IN_PROGRESS` 保存では progress upsert だけを行い、重い recommendation 同期を走らせないように変更
+- [x] recommendation 同期の best-effort 化 — lesson 完了、提出保存、オンボーディング保存、設定更新で同期に失敗しても主要処理を 500 にしないように変更
+- [x] client 側の重複 POST 抑止 — lesson / exercise の自動進捗記録に同一タブ内 dedupe と `AbortController` を追加し、Strict Mode 下の二重送信を抑えた
+- [x] lint / build 再検証パス (静的生成 57 ページ)
+
 ### ダッシュボード接続安定化
 - [x] NextAuth の JWT callback を軽量化 — 通常の `auth()` 呼び出しでは DB 再照会を行わず、`signIn` と `session.update()` 時だけ表示名 / 管理者ロールを同期する形に変更
 - [x] セッション同期の劣化耐性 — セッション再同期で DB エラーが起きても JWT 全体を落とさず、既存 token を維持するように修正

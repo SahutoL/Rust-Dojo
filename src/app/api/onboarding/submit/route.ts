@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { InputJsonValue } from "@prisma/client/runtime/client";
-import { syncRecommendationsForUser } from "@/data/learningService";
+import { syncRecommendationsForUserSafely } from "@/data/learningService";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -56,7 +56,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    await syncRecommendationsForUser(session.user.id);
+    await syncRecommendationsForUserSafely(
+      session.user.id,
+      "onboarding submit"
+    );
 
     return NextResponse.json({
       recommendedTrackCode: diagnosis.track,

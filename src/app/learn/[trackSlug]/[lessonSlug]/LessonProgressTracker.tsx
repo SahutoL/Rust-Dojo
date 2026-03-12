@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Badge, Button } from "@/components/ui";
 
+const visitedLessonKeys = new Set<string>();
+
 export function LessonProgressTracker({
   trackCode,
   lessonSlug,
@@ -12,35 +14,49 @@ export function LessonProgressTracker({
   lessonSlug: string;
 }) {
   const { status } = useSession();
+  const lessonKey = `${trackCode}/${lessonSlug}`;
   const [hasRecordedVisit, setHasRecordedVisit] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
   useEffect(() => {
-    if (status !== "authenticated" || hasRecordedVisit) {
+    if (
+      status !== "authenticated" ||
+      hasRecordedVisit ||
+      visitedLessonKeys.has(lessonKey)
+    ) {
+      if (visitedLessonKeys.has(lessonKey)) {
+        setHasRecordedVisit(true);
+      }
       return;
     }
 
-    let isCancelled = false;
+    const controller = new AbortController();
+    visitedLessonKeys.add(lessonKey);
 
     void fetch(`/api/lessons/${trackCode}/${lessonSlug}/progress`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      signal: controller.signal,
       body: JSON.stringify({ progressState: "IN_PROGRESS" }),
     })
       .then((response) => {
-        if (!isCancelled && response.ok) {
+        if (response.ok) {
           setHasRecordedVisit(true);
+        } else {
+          visitedLessonKeys.delete(lessonKey);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        visitedLessonKeys.delete(lessonKey);
+      });
 
     return () => {
-      isCancelled = true;
+      controller.abort();
     };
-  }, [hasRecordedVisit, lessonSlug, status, trackCode]);
+  }, [hasRecordedVisit, lessonKey, lessonSlug, status, trackCode]);
 
   if (status !== "authenticated") {
     return null;
@@ -75,6 +91,7 @@ export function LessonProgressTracker({
             if (response.ok) {
               setHasRecordedVisit(true);
               setIsCompleted(true);
+              visitedLessonKeys.add(lessonKey);
             }
           } finally {
             setIsCompleting(false);

@@ -13,6 +13,8 @@ import type { SubmitResponse, TestCaseResult } from "@/app/api/submit/route";
 import { readEditorFontSizeFromCookieHeader } from "@/lib/account-preferences";
 import dynamic from "next/dynamic";
 
+const viewedProblemIds = new Set<string>();
+
 const Editor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
   loading: () => (
@@ -88,17 +90,35 @@ export default function ProblemPage() {
   const [activeTab, setActiveTab] = useState<"problem" | "result">("problem");
 
   useEffect(() => {
-    if (status !== "authenticated" || !problem) {
+    if (
+      status !== "authenticated" ||
+      !problem ||
+      viewedProblemIds.has(problem.id)
+    ) {
       return;
     }
+
+    const controller = new AbortController();
+    viewedProblemIds.add(problem.id);
 
     void fetch(`/api/problems/${problem.id}/progress`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      signal: controller.signal,
       body: JSON.stringify({ progressState: "IN_PROGRESS" }),
-    }).catch(() => {});
+    }).then((response) => {
+      if (!response.ok) {
+        viewedProblemIds.delete(problem.id);
+      }
+    }).catch(() => {
+      viewedProblemIds.delete(problem.id);
+    });
+
+    return () => {
+      controller.abort();
+    };
   }, [problem, status]);
 
   const handleRun = useCallback(async () => {
