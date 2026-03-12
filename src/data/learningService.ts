@@ -1178,9 +1178,9 @@ async function loadRecommendationContext(userId: string) {
     return null;
   }
 
-  const [catalog, progressRows, reviewRows, recentSubmissionRows, problemStats] =
-    await Promise.all([
-      loadCatalogContext(),
+  const catalog = await loadCatalogContext();
+  const [progressRows, reviewRows, recentSubmissionRows, problemStats] =
+    await prisma.$transaction([
       prisma.progress.findMany({
         where: { userId },
         orderBy: { lastAccessedAt: "desc" },
@@ -1581,9 +1581,9 @@ export async function getLearningSnapshotForUser(
     return null;
   }
 
-  const [catalog, progressRows, reviewRows, recommendationRows, submissionRows] =
-    await Promise.all([
-      loadCatalogContext(),
+  const catalog = await loadCatalogContext();
+  const [progressRows, reviewRows, recommendationRows, submissionRows] =
+    await prisma.$transaction([
       prisma.progress.findMany({
         where: { userId },
         orderBy: { lastAccessedAt: "desc" },
