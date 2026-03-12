@@ -1,0 +1,479 @@
+// Rust Dojo — Prisma Schema
+// spec.md §23 データモデル仕様に準拠
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===== Users =====
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  profile         UserProfile?
+  enrollments     CourseEnrollment[]
+  submissions     Submission[]
+  progresses      Progress[]
+  reviewQueueItems ReviewQueueItem[]
+  recommendations Recommendation[]
+  achievements    UserAchievement[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]         @relation("AuditTarget")
+  auditActions    AuditLog[]         @relation("AuditActor")
+
+  @@map("users")
+}
+
+// ===== User Profiles =====
+
+enum SkillLevel {
+  BEGINNER
+  ELEMENTARY
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum PrimaryGoal {
+  PROGRAMMING_BASICS
+  RUST_INTRO
+  RUST_PRACTICAL
+  ATCODER
+  OSS
+  CAREER
+}
+
+model UserProfile {
+  userId          String      @id @map("user_id")
+  displayName     String?     @map("display_name")
+  skillLevel      SkillLevel  @default(BEGINNER) @map("skill_level")
+  primaryGoal     PrimaryGoal @default(RUST_INTRO) @map("primary_goal")
+  dailyMinutesGoal Int        @default(30) @map("daily_minutes_goal")
+  onboardingResult Json?      @map("onboarding_result")
+  preferencesJson  Json?      @map("preferences_json")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// ===== Tracks =====
+
+model Track {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  lessons     Lesson[]
+  enrollments CourseEnrollment[]
+
+  @@map("tracks")
+}
+
+// ===== Lessons =====
+
+model Lesson {
+  id              String  @id @default(cuid())
+  trackId         String  @map("track_id")
+  slug            String  @unique
+  title           String
+  level           Int     @default(1)
+  estimatedMinutes Int    @default(10) @map("estimated_minutes")
+  summary         String?
+  content         String? @db.Text
+  contentVersion  Int     @default(1) @map("content_version")
+  sortOrder       Int     @default(0) @map("sort_order")
+  isPublished     Boolean @default(false) @map("is_published")
+
+  track    Track           @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  sections LessonSection[]
+  tags     LessonTag[]
+  progress Progress[]
+
+  @@map("lessons")
+}
+
+// ===== Lesson Sections =====
+
+enum SectionType {
+  EXPLANATION
+  DIAGRAM
+  QUIZ
+  CODE_EXECUTION
+  BUG_FIX
+  OUTPUT_PREDICTION
+  FILL_IN_BLANK
+  SUMMARY
+}
+
+model LessonSection {
+  id          String      @id @default(cuid())
+  lessonId    String      @map("lesson_id")
+  sectionType SectionType @map("section_type")
+  title       String?
+  content     String      @db.Text
+  sortOrder   Int         @default(0) @map("sort_order")
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@map("lesson_sections")
+}
+
+// ===== Problems =====
+
+enum ProblemType {
+  MULTIPLE_CHOICE
+  MULTI_SELECT
+  TRUE_FALSE
+  REORDER
+  FILL_IN_BLANK
+  OUTPUT_PREDICTION
+  CODE_READING
+  BUG_FIX
+  REFACTORING
+  IMPLEMENTATION
+  SUBMISSION
+  COMPILE_ERROR_FIX
+  OWNERSHIP_FIX
+  BORROW_CHECKER_READING
+  COMPILER_MESSAGE_INTERPRET
+  PRACTICAL_IMPROVEMENT
+  COMPETITIVE_OPTIMIZATION
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+model Problem {
+  id              String      @id @default(cuid())
+  type            ProblemType
+  title           String
+  statement       String      @db.Text
+  difficulty      Difficulty  @default(EASY)
+  constraintsText String?     @map("constraints_text") @db.Text
+  inputFormat     String?     @map("input_format") @db.Text
+  outputFormat    String?     @map("output_format") @db.Text
+  solutionOutline String?     @map("solution_outline") @db.Text
+  hintText        String?     @map("hint_text") @db.Text
+  explanationText String?     @map("explanation_text") @db.Text
+  initialCode     String?     @map("initial_code") @db.Text
+  sortOrder       Int         @default(0) @map("sort_order")
+  isPublished     Boolean     @default(false) @map("is_published")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  testCases   ProblemTestCase[]
+  submissions Submission[]
+  tags        ProblemTag[]
+  progress    Progress[]
+
+  @@map("problems")
+}
+
+// ===== Problem Test Cases =====
+
+enum CaseType {
+  SAMPLE
+  HIDDEN
+}
+
+model ProblemTestCase {
+  id                 String   @id @default(cuid())
+  problemId          String   @map("problem_id")
+  caseType           CaseType @default(SAMPLE) @map("case_type")
+  inputText          String   @map("input_text") @db.Text
+  expectedOutputText String   @map("expected_output_text") @db.Text
+  timeLimitMs        Int      @default(2000) @map("time_limit_ms")
+  memoryLimitKb      Int      @default(262144) @map("memory_limit_kb")
+  score              Int      @default(0)
+
+  problem Problem            @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  results SubmissionResult[]
+
+  @@map("problem_test_cases")
+}
+
+// ===== Submissions =====
+
+enum SubmissionStatus {
+  PENDING
+  RUNNING
+  AC
+  WA
+  CE
+  RE
+  TLE
+  MLE
+  OLE
+  INTERNAL_ERROR
+}
+
+model Submission {
+  id          String           @id @default(cuid())
+  userId      String           @map("user_id")
+  problemId   String           @map("problem_id")
+  language    String           @default("rust")
+  sourceCode  String           @map("source_code") @db.Text
+  status      SubmissionStatus @default(PENDING)
+  totalTimeMs Int?             @map("total_time_ms")
+  totalMemoryKb Int?           @map("total_memory_kb")
+  score       Int?
+  compileOutput String?        @map("compile_output") @db.Text
+  submittedAt DateTime         @default(now()) @map("submitted_at")
+
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem            @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  results SubmissionResult[]
+
+  @@map("submissions")
+}
+
+model SubmissionResult {
+  id           String           @id @default(cuid())
+  submissionId String           @map("submission_id")
+  testcaseId   String           @map("testcase_id")
+  status       SubmissionStatus
+  timeMs       Int?             @map("time_ms")
+  memoryKb     Int?             @map("memory_kb")
+  stdoutText   String?          @map("stdout_text") @db.Text
+  stderrText   String?          @map("stderr_text") @db.Text
+
+  submission  Submission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  testcase    ProblemTestCase @relation(fields: [testcaseId], references: [id], onDelete: Cascade)
+
+  @@map("submission_results")
+}
+
+// ===== Progress =====
+
+enum EntityType {
+  LESSON
+  PROBLEM
+}
+
+enum ProgressState {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model Progress {
+  id            String        @id @default(cuid())
+  userId        String        @map("user_id")
+  entityType    EntityType    @map("entity_type")
+  entityId      String        @map("entity_id")
+  progressState ProgressState @default(NOT_STARTED) @map("progress_state")
+  score         Int?
+  lastAccessedAt DateTime     @default(now()) @map("last_accessed_at")
+  completedAt   DateTime?     @map("completed_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson  Lesson?  @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  problem Problem? @relation(fields: [entityId], references: [id], onDelete: Cascade, map: "progress_problem_fk")
+
+  @@unique([userId, entityType, entityId])
+  @@map("progresses")
+}
+
+// ===== Review Queue =====
+
+enum ReviewReasonType {
+  WRONG_ANSWER
+  COMPILE_ERROR
+  LONG_TIME
+  EXPLANATION_VIEWED
+  PERIODIC_REVIEW
+}
+
+model ReviewQueueItem {
+  id         String           @id @default(cuid())
+  userId     String           @map("user_id")
+  sourceType EntityType       @map("source_type")
+  sourceId   String           @map("source_id")
+  reasonType ReviewReasonType @map("reason_type")
+  priority   Int              @default(0)
+  availableAt DateTime        @default(now()) @map("available_at")
+  resolvedAt DateTime?        @map("resolved_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("review_queue_items")
+}
+
+// ===== Recommendations =====
+
+enum RecommendationType {
+  NEXT_LESSON
+  REVIEW_CONCEPT
+  SOLVE_PROBLEM
+  COMPETITIVE_SET
+  PRACTICAL_TASK
+}
+
+model Recommendation {
+  id                 String             @id @default(cuid())
+  userId             String             @map("user_id")
+  recommendationType RecommendationType @map("recommendation_type")
+  targetType         EntityType         @map("target_type")
+  targetId           String             @map("target_id")
+  reasonText         String?            @map("reason_text")
+  createdAt          DateTime           @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("recommendations")
+}
+
+// ===== Tags =====
+
+model Tag {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  category String?
+
+  problems ProblemTag[]
+  lessons  LessonTag[]
+
+  @@map("tags")
+}
+
+model ProblemTag {
+  problemId String @map("problem_id")
+  tagId     String @map("tag_id")
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([problemId, tagId])
+  @@map("problem_tags")
+}
+
+model LessonTag {
+  lessonId String @map("lesson_id")
+  tagId    String @map("tag_id")
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([lessonId, tagId])
+  @@map("lesson_tags")
+}
+
+// ===== Course Enrollment =====
+
+model CourseEnrollment {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  trackId    String   @map("track_id")
+  enrolledAt DateTime @default(now()) @map("enrolled_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId])
+  @@map("course_enrollments")
+}
+
+// ===== Achievements =====
+
+model Achievement {
+  id            String  @id @default(cuid())
+  code          String  @unique
+  name          String
+  description   String?
+  conditionJson Json?   @map("condition_json")
+
+  users UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  achievementId String   @map("achievement_id")
+  earnedAt      DateTime @default(now()) @map("earned_at")
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+// ===== Notifications =====
+
+enum NotificationType {
+  STUDY_REMINDER
+  REVIEW_REMINDER
+  NEW_LESSON
+  MOCK_EXAM
+  ACHIEVEMENT
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false) @map("is_read")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ===== Admin / Audit =====
+
+enum AdminRole {
+  ADMIN
+  EDITOR
+}
+
+model AdminUser {
+  id        String    @id @default(cuid())
+  userId    String    @unique @map("user_id")
+  role      AdminRole @default(EDITOR)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  targetId   String?  @map("target_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  details    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor  User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  target User? @relation("AuditTarget", fields: [targetId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
