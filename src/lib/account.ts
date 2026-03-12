@@ -1,4 +1,4 @@
-import { SessionAdminRole, getAdminRoleForUser } from "@/lib/admin";
+import { SessionAdminRole } from "@/lib/admin";
 import {
   PrimaryGoal,
   SkillLevel,
@@ -53,7 +53,7 @@ export async function getSessionIdentityForUser(userId: string): Promise<{
   displayName: string;
   adminRole: SessionAdminRole | null;
 } | null> {
-  const [user, adminRole] = await Promise.all([
+  const [user, adminUser] = await prisma.$transaction([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -63,7 +63,10 @@ export async function getSessionIdentityForUser(userId: string): Promise<{
         },
       },
     }),
-    getAdminRoleForUser(userId),
+    prisma.adminUser.findUnique({
+      where: { userId },
+      select: { role: true },
+    }),
   ]);
 
   if (!user) {
@@ -72,14 +75,14 @@ export async function getSessionIdentityForUser(userId: string): Promise<{
 
   return {
     displayName: buildDisplayName(user.email, user.profile?.displayName),
-    adminRole,
+    adminRole: adminUser?.role ?? null,
   };
 }
 
 export async function getAccountSnapshot(
   userId: string
 ): Promise<AccountSnapshot | null> {
-  const [user, adminRole] = await Promise.all([
+  const [user, adminUser] = await prisma.$transaction([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -98,7 +101,10 @@ export async function getAccountSnapshot(
         },
       },
     }),
-    getAdminRoleForUser(userId),
+    prisma.adminUser.findUnique({
+      where: { userId },
+      select: { role: true },
+    }),
   ]);
 
   if (!user) {
@@ -117,6 +123,6 @@ export async function getAccountSnapshot(
     preferences: user.profile
       ? parseAccountPreferences(user.profile.preferencesJson)
       : DEFAULT_ACCOUNT_PREFERENCES,
-    adminRole,
+    adminRole: adminUser?.role ?? null,
   };
 }

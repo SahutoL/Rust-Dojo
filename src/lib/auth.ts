@@ -55,7 +55,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     error: "/login",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
         token.name = user.name;
@@ -66,13 +66,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return token;
       }
 
-      const identity = await getSessionIdentityForUser(token.id);
+      if (!user && trigger !== "update") {
+        return token;
+      }
 
-      if (identity) {
-        token.name = identity.displayName;
-        token.adminRole = identity.adminRole;
-      } else {
-        token.adminRole = null;
+      try {
+        const identity = await getSessionIdentityForUser(token.id);
+
+        if (identity) {
+          token.name = identity.displayName;
+          token.adminRole = identity.adminRole;
+        } else {
+          token.adminRole = null;
+        }
+      } catch (error) {
+        console.error("Session identity sync error:", error);
       }
 
       return token;

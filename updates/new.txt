@@ -2,6 +2,13 @@
 
 ## 2026-03-12
 
+### ダッシュボード接続安定化
+- [x] NextAuth の JWT callback を軽量化 — 通常の `auth()` 呼び出しでは DB 再照会を行わず、`signIn` と `session.update()` 時だけ表示名 / 管理者ロールを同期する形に変更
+- [x] セッション同期の劣化耐性 — セッション再同期で DB エラーが起きても JWT 全体を落とさず、既存 token を維持するように修正
+- [x] アカウント照会の接続負荷低減 — `getSessionIdentityForUser()` と `getAccountSnapshot()` の軽量クエリを `Promise.all()` から単一の Prisma `$transaction` に変更
+- [x] PrismaPg pool 設定の明示 — `max`, `idleTimeoutMillis`, `connectionTimeoutMillis`, `keepAlive` を設定し、接続待ちの長時間ハングを起こしにくくした
+- [x] lint / build 再検証パス (静的生成 57 ページ)
+
 ### 学習データ永続化バッチ
 - [x] `Progress` の多態 FK を解消 — `entityType + entityId` の generic progress へ整理し、`generic_learning_progress` migration を追加
 - [x] 学習カタログ同期層 — `src/lib/learning-catalog.ts` と `src/lib/content-sync.ts` を追加し、静的 lesson / problem / testcase を DB 参照できる形へ同期

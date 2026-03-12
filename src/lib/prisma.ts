@@ -12,7 +12,13 @@ function createPrismaClient(): PrismaClient {
     throw new Error("DIRECT_DATABASE_URL or DATABASE_URL is not set");
   }
 
-  const pool = new pg.Pool({ connectionString });
+  const pool = new pg.Pool({
+    connectionString,
+    max: process.env.NODE_ENV === "production" ? 10 : 4,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+    keepAlive: true,
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const adapter = new PrismaPg(pool as any);
   return new PrismaClient({ adapter }) as PrismaClient;
