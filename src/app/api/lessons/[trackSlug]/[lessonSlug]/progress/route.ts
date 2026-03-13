@@ -85,6 +85,16 @@ export async function POST(
       summary,
     });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message === "LESSON_SECTION_NOT_FOUND" ||
+        error.message === "LESSON_SECTION_MISMATCH")
+    ) {
+      return NextResponse.json(
+        { error: "レッスン section の指定が不正です。" },
+        { status: 400 }
+      );
+    }
     console.error("Lesson progress error:", error);
     return NextResponse.json(
       { error: "レッスン進捗の保存に失敗しました。" },

@@ -1243,6 +1243,20 @@ export async function recordLessonSectionProgress({
 }: LessonSectionProgressUpdateInput) {
   const normalizedPayloadJson =
     payloadJson == null ? undefined : payloadJson;
+  const section = await prisma.lessonSection.findUnique({
+    where: { id: sectionId },
+    select: {
+      lessonId: true,
+    },
+  });
+
+  if (!section) {
+    throw new Error("LESSON_SECTION_NOT_FOUND");
+  }
+
+  if (section.lessonId !== lessonId) {
+    throw new Error("LESSON_SECTION_MISMATCH");
+  }
 
   await prisma.lessonSectionProgress.upsert({
     where: {

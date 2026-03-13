@@ -2,6 +2,14 @@
 
 ## 2026-03-13
 
+### 仕様レビュー追補: API 契約と更新系の堅牢化
+- [x] lesson API の spec 導線補完 — `next.config.ts` に rewrite を追加し、`/api/lessons/:id` `:id/progress` `:id/complete` を `lesson-items` 実装へ透過的に接続
+- [x] admin lesson/problem PATCH の全消し防止 — `tags` / `relatedLessonIds` / `sections` を未指定時は保持し、部分更新で既存データを意図せず消さないように修正
+- [x] lesson sections の更新互換性改善 — custom section を持つ lesson を更新しても、`sections` 未指定時は既存 section 群を保持するように変更
+- [x] lesson section progress の整合性検証 — 指定した `sectionId` が対象 lesson に属しているかをサーバ側で検証し、不正な組み合わせは `400` で拒否
+- [x] password reset token の競合対策 — consume と used マークを同一 transaction にまとめ、同一 token の並行利用を防止
+- [x] lint / build 再検証パス (app routes 61 件)
+
 ### DB 接続安定化バッチ
 - [x] Next.js の workspace root 明示 — `next.config.ts` に `turbopack.root` を追加し、複数 lockfile による root 推定警告を抑止
 - [x] Prisma 接続プールの安定化 — `pg.Pool` を global に保持し、`PG_POOL_MAX` `PG_POOL_CONNECTION_TIMEOUT_MS` `PG_POOL_IDLE_TIMEOUT_MS` で上書きできる設定を追加

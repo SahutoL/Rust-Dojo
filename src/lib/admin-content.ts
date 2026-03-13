@@ -223,6 +223,9 @@ export async function updateLessonContent(
       track: {
         select: { id: true, code: true },
       },
+      sections: {
+        orderBy: { sortOrder: "asc" },
+      },
     },
   });
 
@@ -265,19 +268,29 @@ export async function updateLessonContent(
     },
   });
 
+  const preservedSections = existing.sections.map((section) => ({
+    id: section.id,
+    sectionType: section.sectionType,
+    title: section.title,
+    content: section.content,
+    isRequired: section.isRequired,
+    payloadJson: section.payloadJson,
+  }));
   const nextSections: ResolvedLessonSectionInput[] =
     payload.sections && payload.sections.length > 0
       ? payload.sections.map((section, index) => ({
           ...section,
           id: buildSectionId(updated.id, "custom", index),
         }))
-      : buildDefaultLessonSections(updated.id, {
-          trackCode: nextTrack.code,
-          slug: updated.slug,
-          title: updated.title,
-          summary: updated.summary,
-          content: updated.content,
-        });
+      : preservedSections.length > 0
+        ? preservedSections
+        : buildDefaultLessonSections(updated.id, {
+            trackCode: nextTrack.code,
+            slug: updated.slug,
+            title: updated.title,
+            summary: updated.summary,
+            content: updated.content,
+          });
 
   await prisma.lessonSection.deleteMany({
     where: {
@@ -313,27 +326,29 @@ export async function updateLessonContent(
     });
   }
 
-  const tagIds = await upsertTagIds(normalizeTagNames(payload.tags));
-  await prisma.lessonTag.deleteMany({
-    where: {
-      lessonId: updated.id,
-      ...(tagIds.length > 0 ? { tagId: { notIn: tagIds } } : {}),
-    },
-  });
-  for (const tagId of tagIds) {
-    await prisma.lessonTag.upsert({
+  if (typeof payload.tags !== "undefined") {
+    const tagIds = await upsertTagIds(normalizeTagNames(payload.tags));
+    await prisma.lessonTag.deleteMany({
       where: {
-        lessonId_tagId: {
+        lessonId: updated.id,
+        ...(tagIds.length > 0 ? { tagId: { notIn: tagIds } } : {}),
+      },
+    });
+    for (const tagId of tagIds) {
+      await prisma.lessonTag.upsert({
+        where: {
+          lessonId_tagId: {
+            lessonId: updated.id,
+            tagId,
+          },
+        },
+        update: {},
+        create: {
           lessonId: updated.id,
           tagId,
         },
-      },
-      update: {},
-      create: {
-        lessonId: updated.id,
-        tagId,
-      },
-    });
+      });
+    }
   }
 
   await writeAuditLog(actorId, "lesson.update", "LESSON", updated.id, {
@@ -444,50 +459,56 @@ export async function updateProblemContent(
     },
   });
 
-  const tagIds = await upsertTagIds(normalizeTagNames(payload.tags));
-  await prisma.problemTag.deleteMany({
-    where: {
-      problemId,
-      ...(tagIds.length > 0 ? { tagId: { notIn: tagIds } } : {}),
-    },
-  });
-  for (const tagId of tagIds) {
-    await prisma.problemTag.upsert({
+  if (typeof payload.tags !== "undefined") {
+    const tagIds = await upsertTagIds(normalizeTagNames(payload.tags));
+    await prisma.problemTag.deleteMany({
       where: {
-        problemId_tagId: {
+        problemId,
+        ...(tagIds.length > 0 ? { tagId: { notIn: tagIds } } : {}),
+      },
+    });
+    for (const tagId of tagIds) {
+      await prisma.problemTag.upsert({
+        where: {
+          problemId_tagId: {
+            problemId,
+            tagId,
+          },
+        },
+        update: {},
+        create: {
           problemId,
           tagId,
         },
-      },
-      update: {},
-      create: {
-        problemId,
-        tagId,
-      },
-    });
+      });
+    }
   }
 
-  const relatedLessonIds = Array.from(new Set(payload.relatedLessonIds ?? []));
-  await prisma.problemLesson.deleteMany({
-    where: {
-      problemId,
-      ...(relatedLessonIds.length > 0 ? { lessonId: { notIn: relatedLessonIds } } : {}),
-    },
-  });
-  for (const lessonId of relatedLessonIds) {
-    await prisma.problemLesson.upsert({
+  if (typeof payload.relatedLessonIds !== "undefined") {
+    const relatedLessonIds = Array.from(new Set(payload.relatedLessonIds));
+    await prisma.problemLesson.deleteMany({
       where: {
-        problemId_lessonId: {
+        problemId,
+        ...(relatedLessonIds.length > 0
+          ? { lessonId: { notIn: relatedLessonIds } }
+          : {}),
+      },
+    });
+    for (const lessonId of relatedLessonIds) {
+      await prisma.problemLesson.upsert({
+        where: {
+          problemId_lessonId: {
+            problemId,
+            lessonId,
+          },
+        },
+        update: {},
+        create: {
           problemId,
           lessonId,
         },
-      },
-      update: {},
-      create: {
-        problemId,
-        lessonId,
-      },
-    });
+      });
+    }
   }
 
   await writeAuditLog(actorId, "problem.update", "PROBLEM", updated.id, {

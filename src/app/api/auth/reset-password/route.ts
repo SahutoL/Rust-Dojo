@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import {
   consumePasswordResetToken,
   createPasswordResetToken,
-  markPasswordResetTokenUsed,
 } from "@/lib/auth-tokens";
 import { prisma } from "@/lib/prisma";
 
@@ -71,7 +70,6 @@ export async function POST(request: NextRequest) {
           passwordHash,
         },
       });
-      await markPasswordResetTokenUsed(tokenRow.id);
 
       return NextResponse.json({ ok: true });
     }

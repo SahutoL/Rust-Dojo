@@ -1,4 +1,5 @@
 import { revalidatePath, revalidateTag } from "next/cache";
+import type { InputJsonValue } from "@prisma/client/runtime/client";
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessAdmin } from "@/lib/admin";
 import { auth } from "@/lib/auth";
@@ -9,9 +10,14 @@ import {
   getCatalogLessonTag,
   getCatalogTrackTag,
 } from "@/data/catalog";
+import { SectionType } from "@/lib/prisma";
 
 function parseBoolean(value: unknown) {
   return value === true || value === "true";
+}
+
+function hasOwn(value: unknown, key: string) {
+  return typeof value === "object" && value !== null && key in value;
 }
 
 function parseTags(value: unknown) {
@@ -24,6 +30,45 @@ function parseTags(value: unknown) {
   }
 
   return [];
+}
+
+function parseSectionType(value: unknown) {
+  if (typeof value !== "string" || !(value in SectionType)) {
+    return null;
+  }
+
+  return value as SectionType;
+}
+
+function parseSections(value: unknown) {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.flatMap((item) => {
+    if (typeof item !== "object" || item === null) {
+      return [];
+    }
+
+    const sectionType = parseSectionType(item.sectionType);
+    const content =
+      typeof item.content === "string" ? item.content : null;
+
+    if (!sectionType || content === null) {
+      return [];
+    }
+
+    return [
+      {
+        sectionType,
+        title: typeof item.title === "string" ? item.title : null,
+        content,
+        isRequired:
+          typeof item.isRequired === "boolean" ? item.isRequired : undefined,
+        payloadJson: (item.payloadJson ?? null) as InputJsonValue | null,
+      },
+    ];
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -48,6 +93,7 @@ export async function POST(request: NextRequest) {
       content: typeof body.content === "string" ? body.content : "",
       isPublished: parseBoolean(body.isPublished),
       tags: parseTags(body.tags),
+      sections: hasOwn(body, "sections") ? parseSections(body.sections) : undefined,
     });
 
     revalidatePath("/");

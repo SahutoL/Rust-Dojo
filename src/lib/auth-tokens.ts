@@ -80,30 +80,37 @@ export async function createPasswordResetToken(userId: string) {
 
 export async function consumePasswordResetToken(token: string) {
   const tokenHash = hashToken(token);
-  const row = await prisma.passwordResetToken.findFirst({
-    where: {
-      tokenHash,
-      usedAt: null,
-    },
-    select: {
-      id: true,
-      userId: true,
-      expiresAt: true,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+      },
+      select: {
+        id: true,
+        userId: true,
+        expiresAt: true,
+      },
+    });
 
-  if (!row || row.expiresAt.getTime() < Date.now()) {
-    return null;
-  }
+    if (!row || row.expiresAt.getTime() < Date.now()) {
+      return null;
+    }
 
-  return row;
-}
+    const updateResult = await tx.passwordResetToken.updateMany({
+      where: {
+        id: row.id,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
 
-export async function markPasswordResetTokenUsed(id: string) {
-  await prisma.passwordResetToken.update({
-    where: { id },
-    data: {
-      usedAt: new Date(),
-    },
+    if (updateResult.count !== 1) {
+      return null;
+    }
+
+    return row;
   });
 }

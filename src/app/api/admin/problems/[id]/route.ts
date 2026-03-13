@@ -17,6 +17,10 @@ function parseBoolean(value: unknown) {
   return value === true || value === "true";
 }
 
+function hasOwn(value: unknown, key: string) {
+  return typeof value === "object" && value !== null && key in value;
+}
+
 function parseTags(value: unknown) {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string");
@@ -91,12 +95,14 @@ export async function PATCH(
         typeof body.isPublished === "undefined"
           ? undefined
           : parseBoolean(body.isPublished),
-      tags: parseTags(body.tags),
-      relatedLessonIds: Array.isArray(body.relatedLessonIds)
-        ? body.relatedLessonIds.filter(
-            (item: unknown): item is string => typeof item === "string"
-          )
-        : [],
+      tags: hasOwn(body, "tags") ? parseTags(body.tags) : undefined,
+      relatedLessonIds: hasOwn(body, "relatedLessonIds")
+        ? Array.isArray(body.relatedLessonIds)
+          ? body.relatedLessonIds.filter(
+              (item: unknown): item is string => typeof item === "string"
+            )
+          : []
+        : undefined,
     });
 
     revalidatePath("/");
