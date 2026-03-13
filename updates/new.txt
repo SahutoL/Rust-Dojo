@@ -2,6 +2,15 @@
 
 ## 2026-03-13
 
+### 通知・リマインド基盤
+- [x] 認証付き通知ページ `/notifications` を追加し、学習リマインド、復習通知、新規レッスン、達成通知を一覧で確認できるようにした
+- [x] `GET /api/notifications` と `POST /api/notifications/:id/read` を追加し、通知取得と既読更新を API から扱えるようにした
+- [x] 通知同期ロジックを追加し、学習停止 24 時間超過、今すぐ復習あり、実績獲得を通知へ反映するようにした
+- [x] 新規レッスン公開時の通知発火を admin lesson 作成・公開更新に連動させた
+- [x] Header に「通知」導線を追加し、ログイン済みユーザーが全ページから辿れるようにした
+- [x] 通知の再生成抑制を追加し、同種の reminder を短時間で連投しないようにした
+- [x] lint / build 再検証パス (app routes 63 件、`/notifications` と通知 API を追加)
+
 ### 仕様レビュー追補: API 契約と更新系の堅牢化
 - [x] lesson API の spec 導線補完 — `next.config.ts` に rewrite を追加し、`/api/lessons/:id` `:id/progress` `:id/complete` を `lesson-items` 実装へ透過的に接続
 - [x] admin lesson/problem PATCH の全消し防止 — `tags` / `relatedLessonIds` / `sections` を未指定時は保持し、部分更新で既存データを意図せず消さないように修正

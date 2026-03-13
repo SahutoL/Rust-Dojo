@@ -10,6 +10,7 @@ import {
   extractLessonMarkdownSections,
   extractLessonSandboxCode,
 } from "@/lib/lesson-markdown";
+import { createNewLessonNotifications } from "@/data/notifications";
 
 type LessonSectionInput = {
   sectionType: SectionType;
@@ -180,7 +181,7 @@ export async function createLessonContent(
 ) {
   const track = await prisma.track.findUnique({
     where: { code: payload.trackCode },
-    select: { id: true, code: true },
+    select: { id: true, code: true, name: true },
   });
 
   if (!track) {
@@ -203,12 +204,35 @@ export async function createLessonContent(
       id: true,
       slug: true,
       track: {
-        select: { code: true },
+        select: { code: true, name: true },
       },
     },
   });
 
   await updateLessonContent(actorId, lesson.id, payload);
+  const createdLesson = await prisma.lesson.findUnique({
+    where: { id: lesson.id },
+    select: {
+      id: true,
+      slug: true,
+      isPublished: true,
+      title: true,
+      track: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (createdLesson?.isPublished) {
+    await createNewLessonNotifications({
+      lessonTitle: createdLesson.title,
+      trackName: createdLesson.track.name,
+    });
+  }
+
   return lesson;
 }
 
@@ -219,9 +243,16 @@ export async function updateLessonContent(
 ) {
   const existing = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: {
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      summary: true,
+      estimatedMinutes: true,
+      content: true,
+      isPublished: true,
       track: {
-        select: { id: true, code: true },
+        select: { id: true, code: true, name: true },
       },
       sections: {
         orderBy: { sortOrder: "asc" },
@@ -237,7 +268,7 @@ export async function updateLessonContent(
     payload.trackCode && payload.trackCode !== existing.track.code
       ? await prisma.track.findUnique({
           where: { code: payload.trackCode },
-          select: { id: true, code: true },
+          select: { id: true, code: true, name: true },
         })
       : existing.track;
 
@@ -260,10 +291,11 @@ export async function updateLessonContent(
       id: true,
       slug: true,
       title: true,
+      isPublished: true,
       summary: true,
       content: true,
       track: {
-        select: { code: true },
+        select: { code: true, name: true },
       },
     },
   });
@@ -356,6 +388,13 @@ export async function updateLessonContent(
     slug: updated.slug,
     trackCode: nextTrack.code,
   });
+
+  if (!existing.isPublished && updated.isPublished) {
+    await createNewLessonNotifications({
+      lessonTitle: updated.title,
+      trackName: updated.track.name,
+    });
+  }
 
   return updated;
 }

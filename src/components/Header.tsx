@@ -21,6 +21,7 @@ export function Header({ fixed = false }: HeaderProps) {
     { href: "/learn/track3", label: "競プロ", requiresAuth: false },
     { href: "/learn/track2", label: "実務", requiresAuth: false },
     { href: "/dashboard", label: "進捗", requiresAuth: true },
+    { href: "/notifications", label: "通知", requiresAuth: true },
     { href: "/review", label: "復習", requiresAuth: true },
     { href: "/admin", label: "管理", requiresAuth: true, requiresAdmin: true },
   ];
