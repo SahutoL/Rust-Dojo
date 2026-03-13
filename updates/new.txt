@@ -2,6 +2,15 @@
 
 ## 2026-03-13
 
+### Track 0 教材品質改善バッチ
+- [x] Track 0 の 12 レッスンを手書き authoring 形式へ移行し、`explanationSections` `quiz` `sandbox` `summarySection` を lesson fixture の正本として持つ構成へ変更
+- [x] Track 0 の本文を全面改稿し、未経験者向けに「定義 → 具体例 → よくある誤解 → 使いどころ」の流れで理解を積み上げる内容へ差し替え
+- [x] Track 0 の各 lesson に手書き quiz と Rust 専用 sandbox を追加し、lesson title 当ての自動生成クイズと抽出依存の実行コードから離脱
+- [x] content bootstrap / catalog fallback を authored lesson 対応に拡張し、改稿済み lesson は DB と fixture fallback のどちらでも同じ section / quiz / sandbox を返すように整理
+- [x] Track 0 の judged problem を 10 問へ再編し、各問題の問題文、制約、入出力形式、サンプル、ヒント、解説、関連 lesson を未経験者向けに手書きで整備
+- [x] Track 0 sandbox / judged problem のコードを、その lesson 内で説明済みの Rust だけで読める長さへ統一
+- [x] `npm run content:bootstrap` `npm run lint` `npm run build` 再検証パス (build 成功、app routes 63 件)
+
 ### 通知・リマインド基盤
 - [x] 認証付き通知ページ `/notifications` を追加し、学習リマインド、復習通知、新規レッスン、達成通知を一覧で確認できるようにした
 - [x] `GET /api/notifications` と `POST /api/notifications/:id/read` を追加し、通知取得と既読更新を API から扱えるようにした

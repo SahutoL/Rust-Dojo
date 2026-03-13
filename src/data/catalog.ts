@@ -258,34 +258,52 @@ function pickFixtureQuizDistractors(
   return [...sameTrack, ...crossTrack].slice(0, 3);
 }
 
+function buildFixtureExplanationSections(
+  track: FixtureTrackData,
+  lesson: FixtureLessonData
+) {
+  if (lesson.explanationSections && lesson.explanationSections.length > 0) {
+    return lesson.explanationSections.map((section, index) => ({
+      id: buildFixtureLessonSectionId(track.code, lesson.slug, "explanation", index),
+      sectionType: "EXPLANATION" as SectionType,
+      isRequired: section.isRequired ?? true,
+      title: section.title,
+      content: section.content,
+      payloadJson: null,
+      sortOrder: index,
+    }));
+  }
+
+  return extractLessonMarkdownSections(lesson.content).map((section, index) => ({
+    id: buildFixtureLessonSectionId(track.code, lesson.slug, "explanation", index),
+    sectionType: "EXPLANATION" as SectionType,
+    isRequired: true,
+    title: section.title,
+    content: section.markdown,
+    payloadJson: null,
+    sortOrder: index,
+  }));
+}
+
 function buildFixtureLessonSections(
   track: FixtureTrackData,
   lesson: FixtureLessonData
 ): CatalogLessonSection[] {
-  const explanationSections = extractLessonMarkdownSections(lesson.content).map(
-    (section, index) => ({
-      id: buildFixtureLessonSectionId(track.code, lesson.slug, "explanation", index),
-      sectionType: "EXPLANATION" as SectionType,
-      isRequired: true,
-      title: section.title,
-      content: section.markdown,
-      payloadJson: null,
-      sortOrder: index,
-    })
-  );
+  const explanationSections = buildFixtureExplanationSections(track, lesson);
 
   const quizSection = {
     id: buildFixtureLessonSectionId(track.code, lesson.slug, "quiz"),
     sectionType: "QUIZ" as SectionType,
     isRequired: true,
     title: "理解チェック",
-    content: "このレッスンの主題を確認します。",
-    payloadJson: {
-      question: "このレッスンで中心になるテーマはどれですか。",
-      options: [lesson.title, ...pickFixtureQuizDistractors(track, lesson)],
-      correctIndex: 0,
-      explanation: lesson.summary,
-    },
+    content: "このレッスンの理解を確認します。",
+    payloadJson:
+      lesson.quiz ?? {
+        question: "このレッスンで中心になるテーマはどれですか。",
+        options: [lesson.title, ...pickFixtureQuizDistractors(track, lesson)],
+        correctIndex: 0,
+        explanation: lesson.summary,
+      },
     sortOrder: explanationSections.length,
   } satisfies CatalogLessonSection;
 
@@ -294,13 +312,14 @@ function buildFixtureLessonSections(
     sectionType: "CODE_EXECUTION" as SectionType,
     isRequired: true,
     title: "手を動かす",
-    content: "コードを実行して内容を確かめます。",
-    payloadJson: {
-      prompt: `${lesson.title} に出てきたコードを実行し、コンパイルを通します。`,
-      starterCode: extractLessonSandboxCode(lesson.content),
-      stdin: "",
-      successMode: "compile" as const,
-    },
+    content: lesson.sandbox?.prompt ?? "コードを実行して内容を確かめます。",
+    payloadJson:
+      lesson.sandbox ?? {
+        prompt: `${lesson.title} に出てきたコードを実行し、コンパイルを通します。`,
+        starterCode: extractLessonSandboxCode(lesson.content),
+        stdin: "",
+        successMode: "compile" as const,
+      },
     sortOrder: explanationSections.length + 1,
   } satisfies CatalogLessonSection;
 
@@ -308,8 +327,8 @@ function buildFixtureLessonSections(
     id: buildFixtureLessonSectionId(track.code, lesson.slug, "summary"),
     sectionType: "SUMMARY" as SectionType,
     isRequired: false,
-    title: "まとめ",
-    content: lesson.summary,
+    title: lesson.summarySection?.title ?? "まとめ",
+    content: lesson.summarySection?.content ?? lesson.summary,
     payloadJson: null,
     sortOrder: explanationSections.length + 2,
   } satisfies CatalogLessonSection;

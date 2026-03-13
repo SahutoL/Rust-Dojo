@@ -72,6 +72,30 @@ function buildLessonSectionId(
   return `${lessonSlug}::${suffix}${typeof index === "number" ? `::${index + 1}` : ""}`;
 }
 
+function buildLessonExplanationSections(lesson: LessonData) {
+  if (lesson.explanationSections && lesson.explanationSections.length > 0) {
+    return lesson.explanationSections.map((section, index) => ({
+      id: buildLessonSectionId(lesson.slug, "explanation", index),
+      sectionType: "EXPLANATION" as const,
+      isRequired: section.isRequired ?? true,
+      title: section.title,
+      content: section.content,
+      payloadJson: null,
+      sortOrder: index,
+    }));
+  }
+
+  return extractLessonMarkdownSections(lesson.content).map((section, index) => ({
+    id: buildLessonSectionId(lesson.slug, "explanation", index),
+    sectionType: "EXPLANATION" as const,
+    isRequired: true,
+    title: section.title,
+    content: section.markdown,
+    payloadJson: null,
+    sortOrder: index,
+  }));
+}
+
 function pickQuizDistractors(track: TrackData, lesson: LessonData) {
   const sameTrack = track.lessons
     .filter((candidate) => candidate.slug !== lesson.slug)
@@ -92,6 +116,10 @@ function pickQuizDistractors(track: TrackData, lesson: LessonData) {
 }
 
 function buildLessonQuizPayload(track: TrackData, lesson: LessonData): LessonQuizPayload {
+  if (lesson.quiz) {
+    return lesson.quiz;
+  }
+
   const distractors = pickQuizDistractors(track, lesson);
   const options = [lesson.title, ...distractors];
 
@@ -104,6 +132,15 @@ function buildLessonQuizPayload(track: TrackData, lesson: LessonData): LessonQui
 }
 
 function buildLessonCodePayload(lesson: LessonData): LessonCodeExecutionPayload {
+  if (lesson.sandbox) {
+    return {
+      prompt: lesson.sandbox.prompt,
+      starterCode: lesson.sandbox.starterCode,
+      stdin: lesson.sandbox.stdin ?? "",
+      successMode: lesson.sandbox.successMode,
+    };
+  }
+
   return {
     prompt: `${lesson.title} に出てきたコードを実行し、コンパイルを通します。`,
     starterCode: extractLessonSandboxCode(lesson.content),
@@ -173,25 +210,17 @@ async function syncFixtureLesson(track: TrackData, trackId: string, lesson: Less
     },
   });
 
-  const explanationSections = extractLessonMarkdownSections(lesson.content).map(
-    (section, index) => ({
-      id: buildLessonSectionId(lesson.slug, "explanation", index),
-      lessonId: lessonRow.id,
-      sectionType: "EXPLANATION" as const,
-      isRequired: true,
-      title: section.title,
-      content: section.markdown,
-      payloadJson: null,
-      sortOrder: index,
-    })
-  );
+  const explanationSections = buildLessonExplanationSections(lesson).map((section) => ({
+    ...section,
+    lessonId: lessonRow.id,
+  }));
   const quizSection = {
     id: buildLessonSectionId(lesson.slug, "quiz"),
     lessonId: lessonRow.id,
     sectionType: "QUIZ" as const,
     isRequired: true,
     title: "理解チェック",
-    content: "このレッスンの主題を確認します。",
+    content: "このレッスンの理解を確認します。",
     payloadJson: buildLessonQuizPayload(track, lesson),
     sortOrder: explanationSections.length,
   };
@@ -201,7 +230,7 @@ async function syncFixtureLesson(track: TrackData, trackId: string, lesson: Less
     sectionType: "CODE_EXECUTION" as const,
     isRequired: true,
     title: "手を動かす",
-    content: "コードを実行して内容を確かめます。",
+    content: lesson.sandbox?.prompt ?? "コードを実行して内容を確かめます。",
     payloadJson: buildLessonCodePayload(lesson),
     sortOrder: explanationSections.length + 1,
   };
@@ -210,8 +239,8 @@ async function syncFixtureLesson(track: TrackData, trackId: string, lesson: Less
     lessonId: lessonRow.id,
     sectionType: "SUMMARY" as const,
     isRequired: false,
-    title: "まとめ",
-    content: lesson.summary,
+    title: lesson.summarySection?.title ?? "まとめ",
+    content: lesson.summarySection?.content ?? lesson.summary,
     payloadJson: null,
     sortOrder: explanationSections.length + 2,
   };
