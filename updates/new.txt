@@ -10,6 +10,14 @@
 - [x] password reset token の競合対策 — consume と used マークを同一 transaction にまとめ、同一 token の並行利用を防止
 - [x] lint / build 再検証パス (app routes 61 件)
 
+### 未解決項目解消: auth API と推薦ロジック
+- [x] `/api/auth/login` の session 完結化 — credentials 検証後に Auth.js の server-side `signIn()` で session cookie を確立し、`callbackUrl` を含む JSON を返すように変更
+- [x] `/api/auth/logout` の session 完結化 — 手動 cookie delete をやめ、Auth.js の server-side `signOut()` で session cookie を破棄するように変更
+- [x] login / logout UI の API 依存化 — ログイン画面は `/api/auth/login` 成功のみで遷移し、Header のログアウトは `/api/auth/logout` 後に `/` へ戻す構成へ整理
+- [x] 推薦ロジックの入力拡張 — `attemptCount` `waCount` `longTimeCount` `直近 7 日の activity day 数` を使い、再挑戦・不正解傾向・時間超過・学習頻度を考慮した推薦へ変更
+- [x] 推薦出力の抑制改善 — `COMPETITIVE_SET` は Track 3 完了数と学習頻度を満たす場合のみ出し、実務志向かつ Track 2 未公開時は Track 1 側へ自然に落とす形に整理
+- [x] dashboard / recommendations の新ロジック反映 — DB 保存済み recommendation があっても、表示時は現行入力から導いた推薦を優先するように変更
+
 ### DB 接続安定化バッチ
 - [x] Next.js の workspace root 明示 — `next.config.ts` に `turbopack.root` を追加し、複数 lockfile による root 推定警告を抑止
 - [x] Prisma 接続プールの安定化 — `pg.Pool` を global に保持し、`PG_POOL_MAX` `PG_POOL_CONNECTION_TIMEOUT_MS` `PG_POOL_IDLE_TIMEOUT_MS` で上書きできる設定を追加

@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { signIn } from "next-auth/react";
+import { getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button, Card, Input } from "@/components/ui";
@@ -59,7 +59,7 @@ function LoginPageContent() {
       const validationResponse = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, callbackUrl }),
       });
       const validationData = await validationResponse.json().catch(() => null);
 
@@ -74,19 +74,10 @@ function LoginPageContent() {
         return;
       }
 
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        setError("メールアドレスまたはパスワードが正しくありません。");
-      } else {
-        await syncPreferenceCookies();
-        router.push(callbackUrl);
-        router.refresh();
-      }
+      await getSession();
+      await syncPreferenceCookies();
+      router.push(validationData?.callbackUrl || callbackUrl);
+      router.refresh();
     } catch {
       setError("ログイン処理中にエラーが発生しました。");
     } finally {

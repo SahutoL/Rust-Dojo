@@ -218,6 +218,12 @@ function mapSubmissionStatusToReviewReason(status: SubmissionStatus) {
   }
 }
 
+function isWrongAnswerStatus(status: PrismaSubmissionStatus) {
+  return (
+    status === PrismaSubmissionStatus.WA || status === PrismaSubmissionStatus.RE
+  );
+}
+
 function mapSubmissionStatusToPriority(status: SubmissionStatus) {
   switch (status) {
     case "WA":
@@ -284,6 +290,22 @@ function buildStreakSummary(timestamps: Array<string | Date>) {
   }
 
   return { currentStreak, longestStreak };
+}
+
+function buildRecentActivityDayCount(
+  timestamps: Array<string | Date>,
+  windowDays = 7
+) {
+  const cutoff = new Date();
+  cutoff.setUTCHours(0, 0, 0, 0);
+  cutoff.setUTCDate(cutoff.getUTCDate() - (windowDays - 1));
+
+  return new Set(
+    timestamps
+      .map((timestamp) => new Date(timestamp))
+      .filter((value) => value.getTime() >= cutoff.getTime())
+      .map((value) => value.toISOString().slice(0, 10))
+  ).size;
 }
 
 async function loadCatalogContext(): Promise<CatalogContext> {
@@ -472,8 +494,17 @@ function getPreferredTrackCodes(account: AccountSnapshot, catalog: CatalogContex
 function buildNextLessonReason(
   account: AccountSnapshot,
   selectedTrackCode: string,
-  title: string
+  title: string,
+  activityDayCount: number
 ) {
+  if (
+    account.primaryGoal === "ATCODER" &&
+    selectedTrackCode === "track3" &&
+    activityDayCount < 3
+  ) {
+    return `学習頻度を整えながら進める段階なので、まずは ${title} で基礎を積み直します。`;
+  }
+
   if (
     account.primaryGoal !== "ATCODER" &&
     (account.primaryGoal === "RUST_PRACTICAL" ||
@@ -490,8 +521,17 @@ function buildNextLessonReason(
 function buildNextProblemReason(
   account: AccountSnapshot,
   selectedTrackCode: string,
-  title: string
+  title: string,
+  activityDayCount: number
 ) {
+  if (
+    account.primaryGoal === "ATCODER" &&
+    selectedTrackCode === "track3" &&
+    activityDayCount < 3
+  ) {
+    return `学習頻度がまだ固まり切っていないため、セット課題ではなく ${title} を単発で進めます。`;
+  }
+
   if (
     account.primaryGoal !== "ATCODER" &&
     (account.primaryGoal === "RUST_PRACTICAL" ||
@@ -530,6 +570,48 @@ function findLessonForTag(
   return candidates[0] ?? null;
 }
 
+function findLessonForProblem(
+  problemId: string,
+  catalog: CatalogContext,
+  completedLessonIds: Set<string>,
+  preferredTrackCodes: string[]
+) {
+  const problem = catalog.problemsById.get(problemId);
+
+  if (!problem) {
+    return null;
+  }
+
+  const candidates = problem.relatedLessons
+    .filter((lesson) => !completedLessonIds.has(lesson.id))
+    .sort((left, right) => {
+      return (
+        preferredTrackCodes.indexOf(left.trackCode) -
+          preferredTrackCodes.indexOf(right.trackCode) ||
+        left.sortOrder - right.sortOrder
+      );
+    });
+
+  if (candidates.length > 0) {
+    return candidates[0] ?? null;
+  }
+
+  for (const tag of problem.tags) {
+    const lesson = findLessonForTag(
+      tag,
+      catalog,
+      completedLessonIds,
+      preferredTrackCodes
+    );
+
+    if (lesson) {
+      return lesson;
+    }
+  }
+
+  return null;
+}
+
 function buildRecommendationDrafts({
   account,
   catalog,
@@ -545,12 +627,14 @@ function buildRecommendationDrafts({
   recentSubmissionRows: Array<{
     status: PrismaSubmissionStatus;
     problemId: string;
+    submittedAt: Date;
   }>;
   problemStats: Array<{
     problemId: string;
     ceCount: number;
     waCount: number;
     attemptCount: number;
+    longTimeCount: number;
   }>;
 }) {
   const lessonProgressRows = progressRows.filter(
@@ -573,12 +657,19 @@ function buildRecommendationDrafts({
       .map((row) => row.entityId)
   );
   const preferredTrackCodes = getPreferredTrackCodes(account, catalog);
+  const activityDayCount = buildRecentActivityDayCount([
+    ...progressRows.map((row) => row.lastAccessedAt),
+    ...recentSubmissionRows.map((row) => row.submittedAt),
+  ]);
   const availableTrackCodes = preferredTrackCodes.filter((code) => {
     const track = catalog.tracks.find((candidate) => candidate.code === code);
     return track?.availability === TrackAvailability.AVAILABLE;
   });
   const drafts: RecommendationDraft[] = [];
   const usedTargets = new Set<string>();
+  const problemStatsById = new Map(
+    problemStats.map((stat) => [stat.problemId, stat])
+  );
   const topReview = reviewQueue.find((item) => isReviewAvailable(item));
 
   if (topReview) {
@@ -593,15 +684,57 @@ function buildRecommendationDrafts({
     usedTargets.add(topReview.sourceId);
   }
 
+  const highAttemptProblemReview = reviewQueue.find(
+    (item) =>
+      item.sourceType === "PROBLEM" &&
+      isReviewAvailable(item) &&
+      (problemStatsById.get(item.sourceId)?.attemptCount ?? 0) >=
+        EXPLANATION_COMPLETION_ATTEMPTS
+  );
+
+  if (highAttemptProblemReview) {
+    const lesson = findLessonForProblem(
+      highAttemptProblemReview.sourceId,
+      catalog,
+      completedLessonIds,
+      preferredTrackCodes
+    );
+
+    if (lesson && !usedTargets.has(lesson.id)) {
+      drafts.push({
+        recommendationType: "REVIEW_CONCEPT",
+        targetType: "LESSON",
+        targetId: lesson.id,
+        title: lesson.title,
+        reasonText: `${highAttemptProblemReview.title} で再挑戦が続いているため、関連レッスンへ戻ります。`,
+        href: lesson.href,
+      });
+      usedTargets.add(lesson.id);
+    }
+  }
+
   const ceTagCounts = new Map<string, number>();
+  const waTagCounts = new Map<string, number>();
+  const longTimeTagCounts = new Map<string, number>();
   for (const stat of problemStats) {
     const problem = catalog.problemsById.get(stat.problemId);
-    if (!problem || stat.ceCount === 0) {
+    if (!problem) {
       continue;
     }
 
     for (const tag of problem.tags) {
-      ceTagCounts.set(tag, (ceTagCounts.get(tag) ?? 0) + stat.ceCount);
+      if (stat.ceCount > 0) {
+        ceTagCounts.set(tag, (ceTagCounts.get(tag) ?? 0) + stat.ceCount);
+      }
+      if (stat.waCount > 0) {
+        waTagCounts.set(tag, (waTagCounts.get(tag) ?? 0) + stat.waCount);
+      }
+      if (stat.longTimeCount > 0) {
+        longTimeTagCounts.set(
+          tag,
+          (longTimeTagCounts.get(tag) ?? 0) + stat.longTimeCount
+        );
+      }
     }
   }
 
@@ -629,7 +762,35 @@ function buildRecommendationDrafts({
     }
   }
 
-  const recentAccuracyByTag = new Map<string, { attempts: number; ac: number }>();
+  const waHeavyTag = Array.from(waTagCounts.entries()).sort(
+    (left, right) => right[1] - left[1]
+  )[0];
+
+  if (waHeavyTag && waHeavyTag[1] >= 3) {
+    const lesson = findLessonForTag(
+      waHeavyTag[0],
+      catalog,
+      completedLessonIds,
+      preferredTrackCodes
+    );
+
+    if (lesson && !usedTargets.has(lesson.id)) {
+      drafts.push({
+        recommendationType: "REVIEW_CONCEPT",
+        targetType: "LESSON",
+        targetId: lesson.id,
+        title: lesson.title,
+        reasonText: `${waHeavyTag[0]} で不正解が続いているため、関連レッスンを見直します。`,
+        href: lesson.href,
+      });
+      usedTargets.add(lesson.id);
+    }
+  }
+
+  const recentAccuracyByTag = new Map<
+    string,
+    { attempts: number; ac: number; wa: number }
+  >();
   for (const row of recentSubmissionRows.slice(0, 5)) {
     const problem = catalog.problemsById.get(row.problemId);
     if (!problem) {
@@ -637,10 +798,17 @@ function buildRecommendationDrafts({
     }
 
     for (const tag of problem.tags) {
-      const current = recentAccuracyByTag.get(tag) ?? { attempts: 0, ac: 0 };
+      const current = recentAccuracyByTag.get(tag) ?? {
+        attempts: 0,
+        ac: 0,
+        wa: 0,
+      };
       current.attempts += 1;
       if (row.status === PrismaSubmissionStatus.AC) {
         current.ac += 1;
+      }
+      if (isWrongAnswerStatus(row.status)) {
+        current.wa += 1;
       }
       recentAccuracyByTag.set(tag, current);
     }
@@ -676,6 +844,60 @@ function buildRecommendationDrafts({
     }
   }
 
+  const recentWaHeavyTag = Array.from(recentAccuracyByTag.entries())
+    .map(([tag, value]) => ({
+      tag,
+      waCount: value.wa,
+    }))
+    .filter((entry) => entry.waCount >= 3)
+    .sort((left, right) => right.waCount - left.waCount)[0];
+
+  if (recentWaHeavyTag) {
+    const lesson = findLessonForTag(
+      recentWaHeavyTag.tag,
+      catalog,
+      completedLessonIds,
+      preferredTrackCodes
+    );
+
+    if (lesson && !usedTargets.has(lesson.id)) {
+      drafts.push({
+        recommendationType: "REVIEW_CONCEPT",
+        targetType: "LESSON",
+        targetId: lesson.id,
+        title: lesson.title,
+        reasonText: `${recentWaHeavyTag.tag} の不正解が直近で重なっているため、関連レッスンを優先します。`,
+        href: lesson.href,
+      });
+      usedTargets.add(lesson.id);
+    }
+  }
+
+  const longTimeTag = Array.from(longTimeTagCounts.entries()).sort(
+    (left, right) => right[1] - left[1]
+  )[0];
+
+  if (longTimeTag) {
+    const lesson = findLessonForTag(
+      longTimeTag[0],
+      catalog,
+      completedLessonIds,
+      preferredTrackCodes
+    );
+
+    if (lesson && !usedTargets.has(lesson.id)) {
+      drafts.push({
+        recommendationType: "REVIEW_CONCEPT",
+        targetType: "LESSON",
+        targetId: lesson.id,
+        title: lesson.title,
+        reasonText: `${longTimeTag[0]} に時間がかかっているため、関連レッスンで整理し直します。`,
+        href: lesson.href,
+      });
+      usedTargets.add(lesson.id);
+    }
+  }
+
   for (const trackCode of availableTrackCodes) {
     const track = catalog.tracks.find((candidate) => candidate.code === trackCode);
     if (!track || track.lessons.length === 0) {
@@ -693,7 +915,12 @@ function buildRecommendationDrafts({
         targetType: "LESSON",
         targetId: nextLesson.id,
         title: nextLesson.title,
-        reasonText: buildNextLessonReason(account, track.code, nextLesson.title),
+        reasonText: buildNextLessonReason(
+          account,
+          track.code,
+          nextLesson.title,
+          activityDayCount
+        ),
         href: nextLesson.href,
       });
       usedTargets.add(nextLesson.id);
@@ -718,6 +945,7 @@ function buildRecommendationDrafts({
       track3 &&
       nextTrack3Problem &&
       completedTrack3Lessons >= 3 &&
+      activityDayCount >= 3 &&
       !usedTargets.has(nextTrack3Problem.id)
     ) {
       drafts.push({
@@ -725,7 +953,8 @@ function buildRecommendationDrafts({
         targetType: "PROBLEM",
         targetId: nextTrack3Problem.id,
         title: nextTrack3Problem.title,
-        reasonText: "AtCoder 向けの基礎が揃ってきたため、競プロ用の問題に進みます。",
+        reasonText:
+          "AtCoder 向けの基礎が揃い、学習頻度も安定しているため、競プロ用の問題に進みます。",
         href: nextTrack3Problem.href,
       });
       usedTargets.add(nextTrack3Problem.id);
@@ -779,7 +1008,8 @@ function buildRecommendationDrafts({
       reasonText: buildNextProblemReason(
         account,
         nextProblem.trackCode,
-        nextProblem.title
+        nextProblem.title,
+        activityDayCount
       ),
       href: nextProblem.href,
     });
@@ -1162,6 +1392,7 @@ async function loadRecommendationContext(userId: string) {
     select: {
       status: true,
       problemId: true,
+      submittedAt: true,
     },
   });
   const problemStats = await prisma.problemLearningStat.findMany({
@@ -1171,6 +1402,7 @@ async function loadRecommendationContext(userId: string) {
       ceCount: true,
       waCount: true,
       attemptCount: true,
+      longTimeCount: true,
     },
   });
 
@@ -1612,31 +1844,34 @@ export async function getLearningSnapshotForUser(
   const recommendationsFromDb = recommendationRows
     .map((row) => buildRecommendationSnapshot(row, catalog))
     .filter((value): value is RecommendationSnapshot => value !== null);
+  const derivedRecommendations = buildRecommendationDrafts({
+    account,
+    catalog,
+    progressRows,
+    reviewQueue,
+    recentSubmissionRows: submissionRows.map((row) => ({
+      status: row.status,
+      problemId: row.problemId,
+      submittedAt: row.submittedAt,
+    })),
+    problemStats: await prisma.problemLearningStat.findMany({
+      where: { userId },
+      select: {
+        problemId: true,
+        ceCount: true,
+        waCount: true,
+        attemptCount: true,
+        longTimeCount: true,
+      },
+    }),
+  }).map((draft, index) => ({
+    id: `derived-${index}-${draft.targetId}`,
+    ...draft,
+  }));
   const recommendations =
-    recommendationsFromDb.length > 0
-      ? recommendationsFromDb
-      : buildRecommendationDrafts({
-          account,
-          catalog,
-          progressRows,
-          reviewQueue,
-          recentSubmissionRows: submissionRows.map((row) => ({
-            status: row.status,
-            problemId: row.problemId,
-          })),
-          problemStats: await prisma.problemLearningStat.findMany({
-            where: { userId },
-            select: {
-              problemId: true,
-              ceCount: true,
-              waCount: true,
-              attemptCount: true,
-            },
-          }),
-        }).map((draft, index) => ({
-          id: `derived-${index}-${draft.targetId}`,
-          ...draft,
-        }));
+    derivedRecommendations.length > 0
+      ? derivedRecommendations
+      : recommendationsFromDb;
 
   const recentLessons = lessonProgressRows
     .map((row) => {

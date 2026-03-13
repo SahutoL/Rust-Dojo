@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui";
@@ -90,9 +90,9 @@ export function Header({ fixed = false }: HeaderProps) {
                     try {
                       await fetch("/api/auth/logout", { method: "POST" });
                     } catch {
-                      // セッション破棄は signOut 側でも行う
+                      // 失敗時も画面側はログアウト後の状態に寄せる
                     }
-                    void signOut({ callbackUrl: "/" });
+                    window.location.assign("/");
                   }}
                 >
                   ログアウト
