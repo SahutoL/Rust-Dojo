@@ -14,6 +14,34 @@ const DEFAULT_LESSON_SANDBOX_CODE = `fn main() {
 }
 `;
 
+function looksLikeRustSourceCode(value: string) {
+  const code = value.trim();
+
+  if (code.length === 0) {
+    return false;
+  }
+
+  if (/[→←]/u.test(code)) {
+    return false;
+  }
+
+  return [
+    "fn main",
+    "println!",
+    "let ",
+    "let mut ",
+    "use ",
+    "struct ",
+    "enum ",
+    "impl ",
+    "match ",
+    "String",
+    "Vec<",
+    "Result<",
+    "Option<",
+  ].some((token) => code.includes(token));
+}
+
 function stripInlineMarkdown(text: string) {
   return text
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
@@ -63,16 +91,20 @@ export function extractLessonHeadings(content: string): LessonHeading[] {
 }
 
 export function extractLessonSandboxCode(content: string) {
-  const rustMatch = content.match(/```(?:rust|rs)\n([\s\S]*?)```/i);
+  const rustMatches = content.matchAll(/```(?:rust|rs)\n([\s\S]*?)```/gi);
 
-  if (rustMatch?.[1]) {
-    return `${rustMatch[1].trimEnd()}\n`;
+  for (const match of rustMatches) {
+    if (match[1]) {
+      return `${match[1].trimEnd()}\n`;
+    }
   }
 
-  const genericMatch = content.match(/```\n([\s\S]*?)```/);
+  const genericMatches = content.matchAll(/```\n([\s\S]*?)```/g);
 
-  if (genericMatch?.[1]) {
-    return `${genericMatch[1].trimEnd()}\n`;
+  for (const match of genericMatches) {
+    if (match[1] && looksLikeRustSourceCode(match[1])) {
+      return `${match[1].trimEnd()}\n`;
+    }
   }
 
   return DEFAULT_LESSON_SANDBOX_CODE;

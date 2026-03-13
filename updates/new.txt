@@ -11,6 +11,11 @@
 - [x] 通知の再生成抑制を追加し、同種の reminder を短時間で連投しないようにした
 - [x] lint / build 再検証パス (app routes 63 件、`/notifications` と通知 API を追加)
 
+### 追補修正: レッスン実行欄の抽出改善
+- [x] lesson sandbox の抽出を Rust コード優先に変更し、概念図や一般テキストの fenced block を実行欄に混入させないように修正
+- [x] Rust らしい構文を含まない generic code block は無視し、適切なコードがない lesson では安全な既定の Rust サンプルへフォールバック
+- [x] lint / build 再検証パス (app routes 63 件)
+
 ### 仕様レビュー追補: API 契約と更新系の堅牢化
 - [x] lesson API の spec 導線補完 — `next.config.ts` に rewrite を追加し、`/api/lessons/:id` `:id/progress` `:id/complete` を `lesson-items` 実装へ透過的に接続
 - [x] admin lesson/problem PATCH の全消し防止 — `tags` / `relatedLessonIds` / `sections` を未指定時は保持し、部分更新で既存データを意図せず消さないように修正
